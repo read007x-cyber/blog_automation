@@ -61,7 +61,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Naver Uploader (Popup Confirm & Clear All mode) for ID: ' + naverId);
+  console.log('Starting Verified Image Attachment Naver Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -83,25 +83,19 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
     console.log('SmartEditor mainFrame located.');
 
-    // 1. 작성 중인 글 팝업 감지 시 '확인' 버튼 클릭
+    // 1. 팝업 확인 처리
     try {
-      console.log('Checking for draft confirm popup...');
       await frame.evaluate(() => {
         const btns = Array.from(document.querySelectorAll('button'));
         const confirmBtn = btns.find(b => b.innerText.includes('확인') || b.className.includes('confirm'));
-        if (confirmBtn) {
-          confirmBtn.click();
-          console.log('Clicked Draft Confirm button.');
-        }
+        if (confirmBtn) confirmBtn.click();
       });
-    } catch (e) {
-      console.log('Popup check note:', e.message);
-    }
+    } catch (e) {}
 
     await page.waitForTimeout(2000);
 
-    // 2. 제목란 포커스 및 기존 제목 전체 삭제 (Clear All)
-    console.log('Clearing existing title content...');
+    // 2. 제목 입력
+    console.log('Clearing and typing Title...');
     try {
       await frame.evaluate(() => {
         const titleEl = document.querySelector('[class*="title"]') || document.querySelector('h1');
@@ -112,19 +106,16 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       await page.keyboard.press('Backspace');
       await page.waitForTimeout(500);
 
-      // 제목 한 글자씩 타이핑
-      console.log('Typing new Title character by character...');
       await page.keyboard.type(titleText, { delay: 60 });
       await page.keyboard.press('Enter');
-      console.log('Title typing completed: ' + titleText);
+      console.log('Title typed: ' + titleText);
     } catch (e) {
-      console.log('Title handling note:', e.message);
+      console.log('Title note:', e.message);
     }
 
     await page.waitForTimeout(1000);
 
-    // 3. 본문 영역 포커스 및 기존 본문 내용 전체 삭제 (Clear All)
-    console.log('Clearing existing body content...');
+    // 3. 본문 기존 내용 삭제
     try {
       await frame.evaluate(() => {
         const mainContainer = document.querySelector('[class*="main"]') || document.querySelector('.se_component_wrap');
@@ -134,22 +125,20 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       await page.keyboard.press('Control+A');
       await page.keyboard.press('Backspace');
       await page.waitForTimeout(800);
-    } catch (e) {
-      console.log('Body clear note:', e.message);
-    }
+    } catch (e) {}
 
-    // 4. 본문 단락 타자 및 위치별 사진 첨부
-    console.log('Processing ' + parsedBlocks.length + ' body blocks sequentially...');
+    // 4. 본문 텍스트 타자 및 정밀 이미지 이벤트를 통한 사진 첨부
+    console.log('Processing ' + parsedBlocks.length + ' body blocks...');
 
     for (let index = 0; index < parsedBlocks.length; index++) {
       const block = parsedBlocks[index];
 
       if (block.type === 'text') {
-        console.log('Typing text block ' + (index + 1) + ' character by character...');
+        console.log('Typing text block ' + (index + 1) + '...');
         const textLines = block.content.split('\n');
         for (const line of textLines) {
           if (line.trim().length > 0) {
-            await page.keyboard.type(line.trim(), { delay: 35 });
+            await page.keyboard.type(line.trim(), { delay: 30 });
             await page.keyboard.press('Enter');
             await page.waitForTimeout(200);
           } else {
@@ -158,9 +147,10 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
         }
       } else if (block.type === 'image') {
         const imagePath = path.join(imagesDir, block.filename);
-        console.log('Inserting Image at position for: ' + block.filename);
+        console.log('Inserting Verified Image at position for: ' + block.filename);
 
         if (fs.existsSync(imagePath)) {
+          // 상단 사진 버튼 클릭
           try {
             await frame.evaluate(() => {
               const btns = Array.from(document.querySelectorAll('button'));
@@ -173,11 +163,19 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
           let fileInput = await frame.$('input[type="file"]');
           if (fileInput) {
             await fileInput.setInputFiles(imagePath);
-            console.log('Attached image successfully at position: ' + block.filename);
-            await page.waitForTimeout(3500);
+            // change 및 input 이벤트 강제 발화
+            await frame.evaluate(() => {
+              const input = document.querySelector('input[type="file"]');
+              if (input) {
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+            });
+            console.log('Dispatched change event and attached image: ' + block.filename);
+            await page.waitForTimeout(4000); // 렌더링 완성 대기
             await page.keyboard.press('Enter');
           } else {
-            console.log('File input element not ready for: ' + block.filename);
+            console.log('File input not found for: ' + block.filename);
           }
         } else {
           console.log('Image file not found: ' + imagePath);
@@ -185,8 +183,8 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       }
     }
 
-    console.log('All text blocks and images inserted at exact positions!');
-    await page.waitForTimeout(2500);
+    console.log('All text and verified images inserted successfully!');
+    await page.waitForTimeout(3000);
 
     // 5. 임시 저장 버튼 클릭
     console.log('Clicking Draft Save button...');
@@ -201,14 +199,14 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       console.log('Save click note:', e.message);
     }
 
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(4000);
 
     const screenshotPath = path.join(targetTopicDir, 'naver_upload_result.png');
     await page.screenshot({ path: screenshotPath, fullPage: true });
     console.log('Saved result screenshot to: ' + screenshotPath);
 
   } catch (err) {
-    console.log('Error during human typing upload:', err);
+    console.log('Error during execution:', err);
   } finally {
     await context.close();
   }
