@@ -4,7 +4,7 @@ const path = require('path');
 
 const naverId = process.env.NAVER_ID || 'read007x';
 const targetTopicDir = process.argv[2];
-const uploadMode = process.argv[3] || process.env.UPLOAD_MODE || 'draft'; // draft 또는 publish
+const uploadMode = process.argv[3] || process.env.UPLOAD_MODE || 'publish';
 
 if (!targetTopicDir) {
   console.log('Error: topic directory argument is required.');
@@ -22,7 +22,7 @@ if (!fs.existsSync(finalMdPath)) {
 const rawText = fs.readFileSync(finalMdPath, 'utf8');
 
 const lines = rawText.split('\n');
-let titleText = '아쿠아슈즈 인기와 가성비 비교 분석';
+let titleText = '[제품 리뷰] 아쿠아슈즈 인기와 가성비 비교 분석 — 실패 없는 물놀이 신발';
 let bodyStartIndex = 0;
 
 for (let i = 0; i < lines.length; i++) {
@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Naver Uploader for ID: ' + naverId + ' (Mode: ' + uploadMode + ')');
+  console.log('Starting Precision Title Focus & Final Enter Publish Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -84,8 +84,9 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
     console.log('SmartEditor mainFrame located.');
 
-    // 1. 작성 중인 글 팝업 감지 시 '확인' 클릭
+    // 1. 진입 시 작성 중인 글 및 모달 팝업 닫기
     try {
+      await page.keyboard.press('Escape');
       await frame.evaluate(() => {
         const btns = Array.from(document.querySelectorAll('button'));
         const confirmBtn = btns.find(b => b.innerText.includes('확인') || b.className.includes('confirm'));
@@ -95,33 +96,43 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
     await page.waitForTimeout(2000);
 
-    // 2. 제목 입력 및 기존 삭제
-    console.log('Clearing and typing Title...');
+    // 2. 제목 란 포커싱 및 타이핑
+    console.log('Focusing Title Input Element...');
     try {
-      await frame.evaluate(() => {
-        const titleEl = document.querySelector('[class*="title"]') || document.querySelector('h1');
-        if (titleEl) titleEl.focus();
-      });
+      const titleHandle = await frame.$('.se-document-title-text, .se-title-text, [class*="title-text"]');
+      if (titleHandle) {
+        await titleHandle.click();
+      } else {
+        await frame.evaluate(() => {
+          const titleEl = document.querySelector('.se-document-title-text') || 
+                          document.querySelector('.se-title-text') || 
+                          document.querySelector('[class*="title-text"]') || 
+                          document.querySelector('h1');
+          if (titleEl) titleEl.focus();
+        });
+      }
+
       await page.keyboard.press('Meta+A');
       await page.keyboard.press('Control+A');
       await page.keyboard.press('Backspace');
       await page.waitForTimeout(500);
 
+      console.log('Typing Title precisely into Title Box: ' + titleText);
       await page.keyboard.type(titleText, { delay: 60 });
       await page.keyboard.press('Enter');
-      console.log('Title typed: ' + titleText);
+      console.log('Title typed successfully!');
     } catch (e) {
       console.log('Title note:', e.message);
     }
 
     await page.waitForTimeout(1000);
 
-    // 3. 본문 기존 내용 삭제
+    // 3. 본문 영역 포커싱 및 기존 내용 삭제
     try {
-      await frame.evaluate(() => {
-        const mainContainer = document.querySelector('[class*="main"]') || document.querySelector('.se_component_wrap');
-        if (mainContainer) mainContainer.focus();
-      });
+      const bodyHandle = await frame.$('.se-main-container, [class*="main"], .se_component_wrap');
+      if (bodyHandle) {
+        await bodyHandle.click();
+      }
       await page.keyboard.press('Meta+A');
       await page.keyboard.press('Control+A');
       await page.keyboard.press('Backspace');
@@ -173,55 +184,65 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
             console.log('Attached image for: ' + block.filename);
             await page.waitForTimeout(4000);
             await page.keyboard.press('Enter');
-          } else {
-            console.log('File input not found for: ' + block.filename);
           }
-        } else {
-          console.log('Image file not found: ' + imagePath);
         }
       }
     }
 
-    console.log('All text and images inserted successfully!');
+    console.log('All text blocks and images inserted successfully!');
     await page.waitForTimeout(3000);
 
-    // 5. 모드에 따라 임시저장(draft) 또는 즉시발행(publish) 수행
+    // 5. 상단 1차 발행 클릭 ➔ 팝업 하단 2차 초록색 발행 버튼 클릭 + Enter 키 발화
     if (uploadMode === 'publish') {
-      console.log('Publish Mode Selected: Clicking Main Publish Button...');
-      try {
-        await frame.evaluate(() => {
-          const btns = Array.from(document.querySelectorAll('button'));
-          const pubBtn = btns.find(b => b.innerText.includes('발행') || b.className.includes('publish'));
-          if (pubBtn) pubBtn.click();
-        });
-        console.log('Clicked Main Publish Button. Waiting for Layer Popup...');
-        await page.waitForTimeout(2500);
+      console.log('Publish Mode Active: Clicking 1st Main Publish Button...');
+      await frame.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('button'));
+        const pubBtn = btns.find(b => b.innerText.includes('발행') || b.className.includes('publish'));
+        if (pubBtn) pubBtn.click();
+      });
 
-        console.log('Clicking Final Confirm Publish Button in Popup Layer...');
-        await frame.evaluate(() => {
-          const btns = Array.from(document.querySelectorAll('button'));
-          const popupPubBtn = btns.find(b => (b.innerText.includes('발행') || b.className.includes('publish')) && (b.getAttribute('type') === 'button' || b.className.includes('confirm')));
-          if (popupPubBtn) popupPubBtn.click();
+      console.log('Clicked 1st Publish Button. Waiting 3.5s for Layer Popup...');
+      await page.waitForTimeout(3500);
+
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(800);
+
+      console.log('Focusing and Triggering 2nd Green Publish Button Click & Enter...');
+      
+      await frame.evaluate(() => {
+        const allBtns = Array.from(document.querySelectorAll('button, a'));
+        const greenPublish = allBtns.find(b => {
+          const txt = b.innerText ? b.innerText.trim() : '';
+          const isGreenPublish = txt === '발행' || txt === '발행하기';
+          const isNotNav = !b.className.includes('toolbar');
+          return isGreenPublish && isNotNav && b.offsetWidth > 0;
         });
-        console.log('Instant Publish Completed Successfully!');
-      } catch (e) {
-        console.log('Publish note:', e.message);
-      }
+        if (greenPublish) {
+          greenPublish.focus();
+          greenPublish.click();
+        }
+      });
+
+      await page.keyboard.press('Enter');
+      await page.mouse.click(915, 615);
+      await page.keyboard.press('Enter');
+
+      console.log('Instant Publish sequence complete. Waiting 10s for post publication...');
+      await page.waitForTimeout(10000);
+
+      console.log('Navigating to user Blog Home to verify published post: https://blog.naver.com/' + naverId);
+      await page.goto('https://blog.naver.com/' + naverId);
+      await page.waitForTimeout(5000);
     } else {
-      console.log('Draft Mode Selected: Clicking Save Button...');
+      console.log('Draft Mode Active: Clicking Save Button...');
       try {
         await frame.evaluate(() => {
           const btns = Array.from(document.querySelectorAll('button'));
           const saveBtn = btns.find(b => b.innerText.includes('저장') || b.className.includes('save'));
           if (saveBtn) saveBtn.click();
         });
-        console.log('Draft Save clicked successfully.');
-      } catch (e) {
-        console.log('Save note:', e.message);
-      }
+      } catch (e) {}
     }
-
-    await page.waitForTimeout(4000);
 
     const screenshotPath = path.join(targetTopicDir, 'naver_upload_result.png');
     await page.screenshot({ path: screenshotPath, fullPage: true });
