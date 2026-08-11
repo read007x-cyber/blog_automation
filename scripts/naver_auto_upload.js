@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Precision Title Focus & Final Enter Publish Uploader for ID: ' + naverId);
+  console.log('Starting Exact Publish Button Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -192,12 +192,12 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     console.log('All text blocks and images inserted successfully!');
     await page.waitForTimeout(3000);
 
-    // 5. 상단 1차 발행 클릭 ➔ 팝업 하단 2차 초록색 발행 버튼 클릭 + Enter 키 발화
+    // 5. 상단 1차 발행 클릭 ➔ 팝업 내 텍스트가 정확히 '발행'인 버튼 클릭
     if (uploadMode === 'publish') {
       console.log('Publish Mode Active: Clicking 1st Main Publish Button...');
       await frame.evaluate(() => {
         const btns = Array.from(document.querySelectorAll('button'));
-        const pubBtn = btns.find(b => b.innerText.includes('발행') || b.className.includes('publish'));
+        const pubBtn = btns.find(b => b.innerText.trim() === '발행' || b.className.includes('publish'));
         if (pubBtn) pubBtn.click();
       });
 
@@ -207,27 +207,27 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       await page.keyboard.press('Escape');
       await page.waitForTimeout(800);
 
-      console.log('Focusing and Triggering 2nd Green Publish Button Click & Enter...');
+      console.log('Targeting and Clicking 2nd Publish button with exact text "발행" in Layer Popup...');
       
       await frame.evaluate(() => {
-        const allBtns = Array.from(document.querySelectorAll('button, a'));
-        const greenPublish = allBtns.find(b => {
+        const allBtns = Array.from(document.querySelectorAll('button'));
+        const exactPublishBtn = allBtns.find(b => {
           const txt = b.innerText ? b.innerText.trim() : '';
-          const isGreenPublish = txt === '발행' || txt === '발행하기';
-          const isNotNav = !b.className.includes('toolbar');
-          return isGreenPublish && isNotNav && b.offsetWidth > 0;
+          const isExactPublish = txt === '발행';
+          const isNotTopToolbar = !b.className.includes('toolbar');
+          const isVisible = b.offsetWidth > 0 && b.offsetHeight > 0;
+          return isExactPublish && isNotTopToolbar && isVisible;
         });
-        if (greenPublish) {
-          greenPublish.focus();
-          greenPublish.click();
+        if (exactPublishBtn) {
+          exactPublishBtn.click();
+          console.log('Clicked exact "발행" button inside layer popup!');
         }
       });
 
-      await page.keyboard.press('Enter');
-      await page.mouse.click(915, 615);
+      await page.waitForTimeout(1000);
       await page.keyboard.press('Enter');
 
-      console.log('Instant Publish sequence complete. Waiting 10s for post publication...');
+      console.log('Exact "발행" button click complete. Waiting 10s for post publication...');
       await page.waitForTimeout(10000);
 
       console.log('Navigating to user Blog Home to verify published post: https://blog.naver.com/' + naverId);
