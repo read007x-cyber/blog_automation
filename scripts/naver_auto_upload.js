@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Clean State Restore Popup Fix Uploader for ID: ' + naverId);
+  console.log('Starting Dim Removal & Verified Popup Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -79,7 +79,11 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
   try {
     console.log('Navigating directly to SmartEditor Write Page...');
     await page.goto('https://blog.naver.com/' + naverId + '?Redirect=Write');
-    await page.waitForTimeout(6000);
+    await page.waitForTimeout(7000);
+
+    try {
+      await page.waitForSelector('iframe[name="mainFrame"]', { timeout: 12000 });
+    } catch (e) {}
 
     let frame = page.frame({ name: 'mainFrame' });
     if (!frame) {
@@ -89,15 +93,16 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
     console.log('SmartEditor mainFrame located.');
 
-    // 1. 진입 시 '복원' 팝업 및 작성 중인 글 불러오기 모달 전면 닫기
-    console.log('Closing any initial restore popup or draft prompt modals...');
+    // 1. 진입 시 복원 alert 모달 및 se-popup-dim 반투명 레이어 100% 제거
+    console.log('Completely removing restore alert modal and dim layer...');
     try {
       await page.keyboard.press('Escape');
-      await page.waitForTimeout(500);
       await frame.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll('button, a'));
-        const cancelBtn = btns.find(b => b.innerText && (b.innerText.includes('취소') || b.innerText.includes('새로 쓰기') || b.innerText.includes('닫기')));
+        const cancelBtn = document.querySelector('.se-popup-button-cancel, button[class*="cancel"]');
         if (cancelBtn) cancelBtn.click();
+        
+        const dims = document.querySelectorAll('.se-popup-dim, .se-popup-alert-confirm');
+        dims.forEach(d => d.remove());
       });
     } catch (e) {}
 
@@ -108,7 +113,7 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     try {
       const titleHandle = await frame.$('.se-document-title-text, .se-title-text, [class*="title-text"]');
       if (titleHandle) {
-        await titleHandle.click();
+        await titleHandle.click({ force: true });
       } else {
         await frame.evaluate(() => {
           const titleEl = document.querySelector('.se-document-title-text') || 
@@ -138,7 +143,7 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     try {
       const bodyHandle = await frame.$('.se-main-container, [class*="main"], .se_component_wrap');
       if (bodyHandle) {
-        await bodyHandle.click();
+        await bodyHandle.click({ force: true });
       }
       await page.keyboard.press('Meta+A');
       await page.keyboard.press('Control+A');
@@ -194,7 +199,7 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     console.log('All text blocks and images inserted successfully!');
     await page.waitForTimeout(3000);
 
-    // 5. 발행 직전 브라우저 상의 모달 / 방해 팝업 100% 클리어 (Clean State)
+    // 5. 발행 직전 방해 요소 클리어 ➔ 1차 우측 팝업 노출 ➔ 2차 발행 마우스 호버 오버 ➔ 1.5초 대기 ➔ 마우스 클릭
     if (uploadMode === 'publish') {
       console.log('Clearing any remaining popups before clicking publish...');
       await page.keyboard.press('Escape');
