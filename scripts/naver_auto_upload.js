@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Simplified Reservation Publish Uploader for ID: ' + naverId);
+  console.log('Starting Perfect Confirm Button Publish Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -192,67 +192,58 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     console.log('All text blocks and images inserted successfully!');
     await page.waitForTimeout(3000);
 
-    // 5. 1차 발행 클릭 ➔ 예약 선택 (분 수정 생략) ➔ 5초 대기 ➔ 맨 아래 발행 버튼 클릭
+    // 5. 메인 top Document 영역의 confirm_btn 정밀 타격 클릭
     if (uploadMode === 'publish') {
       console.log('Publish Mode Active: Clicking 1st Main Publish Button...');
-      await frame.click('button[class*="publish"], .btn_publish');
-      await page.waitForTimeout(3500);
+      
+      let clicked1st = false;
+      const firstPubOnPage = await page.$('button[class*="publish"], .btn_publish');
+      if (firstPubOnPage && await firstPubOnPage.isVisible()) {
+        await firstPubOnPage.click();
+        clicked1st = true;
+      }
+      if (!clicked1st) {
+        const firstPubOnFrame = await frame.$('button[class*="publish"], .btn_publish');
+        if (firstPubOnFrame) await firstPubOnFrame.click();
+      }
+
+      console.log('Clicked 1st Publish Button. Waiting 4s for Layer Popup...');
+      await page.waitForTimeout(4000);
 
       await page.keyboard.press('Escape');
       await page.waitForTimeout(800);
 
-      console.log('Selecting "예약" option in Layer Popup (skipping minute edit)...');
-      const selectReservation = async (container) => {
-        return container.evaluate(() => {
-          const radioRes = document.querySelector('input[id*="reservation"], input[value="1"], label[for*="reservation"]');
-          if (radioRes) {
-            radioRes.click();
-            return true;
-          }
-          const labels = Array.from(document.querySelectorAll('label, span'));
-          const rOpt = labels.find(l => l.innerText && l.innerText.trim() === '예약');
-          if (rOpt) {
-            rOpt.click();
-            return true;
-          }
-          return false;
+      console.log('Targeting confirm_btn in Layer Popup on main page DOM...');
+      
+      let clicked2nd = false;
+      const confirmOnPage = await page.$('.confirm_btn, .btn_confirm, button[class*="confirm_btn"], button[class*="publish_btn"]');
+      if (confirmOnPage && await confirmOnPage.isVisible()) {
+        await confirmOnPage.click({ force: true });
+        console.log('Force clicked confirm_btn on main page DOM!');
+        clicked2nd = true;
+      }
+
+      if (!clicked2nd) {
+        const confirmOnFrame = await frame.$('.confirm_btn, .btn_confirm, button[class*="confirm_btn"], button[class*="publish_btn"]');
+        if (confirmOnFrame && await confirmOnFrame.isVisible()) {
+          await confirmOnFrame.click({ force: true });
+          console.log('Force clicked confirm_btn on mainFrame DOM!');
+          clicked2nd = true;
+        }
+      }
+
+      if (!clicked2nd) {
+        await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll('button, a'));
+          const pub = btns.find(b => b.innerText && b.innerText.trim() === '발행' && !b.className.includes('toolbar') && b.offsetWidth > 0);
+          if (pub) pub.click();
         });
-      };
-
-      await selectReservation(frame);
-      await selectReservation(page);
-
-      console.log('Waiting 5 seconds as requested by user before final submit...');
-      await page.waitForTimeout(5000);
-
-      console.log('Clicking Bottom 2nd Publish Button in Layer Popup...');
-      const clickFinalPublish = async (container) => {
-        return container.evaluate(() => {
-          const popupLayer = document.querySelector('[class*="publish_layer"]') || document.querySelector('[class*="popup"]') || document;
-          const btns = Array.from(popupLayer.querySelectorAll('button, a'));
-          const targetBtn = btns.find(b => {
-            const txt = b.innerText ? b.innerText.trim() : '';
-            const isPublishText = txt === '발행';
-            const isNotTopToolbar = !b.className.includes('toolbar');
-            const isVisible = b.offsetWidth > 0 && b.offsetHeight > 0;
-            return isPublishText && isNotTopToolbar && isVisible;
-          });
-          if (targetBtn) {
-            targetBtn.focus();
-            targetBtn.click();
-            return true;
-          }
-          return false;
-        });
-      };
-
-      await clickFinalPublish(frame);
-      await clickFinalPublish(page);
+      }
 
       await page.keyboard.press('Enter');
 
-      console.log('Reservation Publish completed. Waiting 10s...');
-      await page.waitForTimeout(10000);
+      console.log('Publish submit triggered. Waiting 15s for URL navigation/completion...');
+      await page.waitForTimeout(15000);
 
       console.log('Navigating directly to user Blog PostList page to verify publication: https://blog.naver.com/PostList.naver?blogId=' + naverId);
       await page.goto('https://blog.naver.com/PostList.naver?blogId=' + naverId);
