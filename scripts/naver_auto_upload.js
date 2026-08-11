@@ -62,10 +62,15 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Verified Popup Loop & Post Completion Uploader for ID: ' + naverId);
+  console.log('Starting Clean State Restore Popup Fix Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
+    args: [
+      '--disable-restore-session-state',
+      '--hide-crash-restore-bubble',
+      '--disable-session-crashed-bubble'
+    ],
     viewport: { width: 1280, height: 900 }
   });
 
@@ -84,13 +89,15 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
     console.log('SmartEditor mainFrame located.');
 
-    // 1. 진입 시 작성 중인 글 및 모달 팝업 닫기
+    // 1. 진입 시 '복원' 팝업 및 작성 중인 글 불러오기 모달 전면 닫기
+    console.log('Closing any initial restore popup or draft prompt modals...');
     try {
       await page.keyboard.press('Escape');
+      await page.waitForTimeout(500);
       await frame.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll('button'));
-        const confirmBtn = btns.find(b => b.innerText.includes('확인') || b.className.includes('confirm'));
-        if (confirmBtn) confirmBtn.click();
+        const btns = Array.from(document.querySelectorAll('button, a'));
+        const cancelBtn = btns.find(b => b.innerText && (b.innerText.includes('취소') || b.innerText.includes('새로 쓰기') || b.innerText.includes('닫기')));
+        if (cancelBtn) cancelBtn.click();
       });
     } catch (e) {}
 
@@ -139,7 +146,7 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       await page.waitForTimeout(800);
     } catch (e) {}
 
-    // 4. 본문 텍스트 타자 및 위치별 이미지 첨부
+    // 4. 본문 텍스트 타자 및 위치별 이미지 직접 첨부 (OS 파일 탐색기 창 유발 차단)
     console.log('Processing ' + parsedBlocks.length + ' body blocks...');
 
     for (let index = 0; index < parsedBlocks.length; index++) {
@@ -159,19 +166,14 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
         }
       } else if (block.type === 'image') {
         const imagePath = path.join(imagesDir, block.filename);
-        console.log('Inserting Verified Image at position for: ' + block.filename);
+        console.log('Inserting Verified Image directly via File Input for: ' + block.filename);
 
         if (fs.existsSync(imagePath)) {
-          try {
-            await frame.evaluate(() => {
-              const btns = Array.from(document.querySelectorAll('button'));
-              const imgBtn = btns.find(b => b.innerText.includes('사진') || b.className.includes('image'));
-              if (imgBtn) imgBtn.click();
-            });
-            await page.waitForTimeout(1200);
-          } catch (e) {}
-
           let fileInput = await frame.$('input[type="file"]');
+          if (!fileInput) {
+            fileInput = await page.$('input[type="file"]');
+          }
+
           if (fileInput) {
             await fileInput.setInputFiles(imagePath);
             await frame.evaluate(() => {
@@ -181,8 +183,8 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
                 input.dispatchEvent(new Event('input', { bubbles: true }));
               }
             });
-            console.log('Attached image for: ' + block.filename);
-            await page.waitForTimeout(4000);
+            console.log('Attached image cleanly for: ' + block.filename);
+            await page.waitForTimeout(3000);
             await page.keyboard.press('Enter');
           }
         }
@@ -192,12 +194,13 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     console.log('All text blocks and images inserted successfully!');
     await page.waitForTimeout(3000);
 
-    // 5. 1차 발행 팝업 오픈 확인 루프 ➔ 2차 팝업 하단 발행 버튼 마우스 호버 & 클릭 ➔ 포스팅 완료 검증 이동
+    // 5. 발행 직전 브라우저 상의 모달 / 방해 팝업 100% 클리어 (Clean State)
     if (uploadMode === 'publish') {
-      console.log('Releasing body focus with Escape key...');
+      console.log('Clearing any remaining popups before clicking publish...');
       await page.keyboard.press('Escape');
       await page.keyboard.press('Escape');
-      await page.waitForTimeout(1000);
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(1200);
 
       console.log('Verifying 1st Publish Layer Popup opening...');
       let popupOpened = false;
@@ -237,7 +240,7 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       await page.keyboard.press('Escape');
       await page.waitForTimeout(800);
 
-      console.log('Calculating absolute coordinates for 2nd Layer Popup Confirm Button...');
+      console.log('Calculating absolute coordinates for 2nd Layer Popup Confirm Button on clean screen...');
       const confirmBtnCoord = await page.evaluate(() => {
         const btns = Array.from(document.querySelectorAll('button, a'));
         const target = btns.find(b => {
