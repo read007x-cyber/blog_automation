@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Perfect Confirm Button Publish Uploader for ID: ' + naverId);
+  console.log('Starting Persistent Keep Open Browser Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -192,7 +192,7 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     console.log('All text blocks and images inserted successfully!');
     await page.waitForTimeout(3000);
 
-    // 5. 메인 top Document 영역의 confirm_btn 정밀 타격 클릭
+    // 5. 발행 실행 및 브라우저 창 지속 유지
     if (uploadMode === 'publish') {
       console.log('Publish Mode Active: Clicking 1st Main Publish Button...');
       
@@ -242,12 +242,8 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
       await page.keyboard.press('Enter');
 
-      console.log('Publish submit triggered. Waiting 15s for URL navigation/completion...');
-      await page.waitForTimeout(15000);
-
-      console.log('Navigating directly to user Blog PostList page to verify publication: https://blog.naver.com/PostList.naver?blogId=' + naverId);
-      await page.goto('https://blog.naver.com/PostList.naver?blogId=' + naverId);
-      await page.waitForTimeout(6000);
+      console.log('Publish submit triggered! Keeping browser window OPEN permanently for user observation...');
+      await page.waitForTimeout(8000);
     } else {
       console.log('Draft Mode Active: Clicking Save Button...');
       try {
@@ -262,10 +258,11 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     const screenshotPath = path.join(targetTopicDir, 'naver_upload_result.png');
     await page.screenshot({ path: screenshotPath, fullPage: true });
     console.log('Saved result screenshot to: ' + screenshotPath);
+    console.log('Finished upload task. Browser stays open as requested!');
 
   } catch (err) {
     console.log('Error during execution:', err);
   } finally {
-    await context.close();
+    process.exit(0);
   }
 })();
