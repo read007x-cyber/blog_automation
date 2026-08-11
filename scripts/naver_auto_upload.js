@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Blur Focus & Guaranteed Hover Green Click Uploader for ID: ' + naverId);
+  console.log('Starting Verified Popup Loop & Post Completion Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -192,27 +192,47 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     console.log('All text blocks and images inserted successfully!');
     await page.waitForTimeout(3000);
 
-    // 5. 에디터 본문 포커스 해제 후 1차 발행 ➔ 우측 팝업 2차 발행 마우스 호버(Hover) 오버 ➔ 1.5초 대기 ➔ 마우스 클릭
+    // 5. 1차 발행 팝업 오픈 확인 루프 ➔ 2차 팝업 하단 발행 버튼 마우스 호버 & 클릭 ➔ 포스팅 완료 검증 이동
     if (uploadMode === 'publish') {
       console.log('Releasing body focus with Escape key...');
       await page.keyboard.press('Escape');
       await page.keyboard.press('Escape');
       await page.waitForTimeout(1000);
 
-      console.log('Triggering 1st publish button in page DOM...');
-      await page.evaluate(() => {
-        const pubBtn = document.querySelector('button[class*="publish"]') || 
-                       document.querySelector('.btn_publish') || 
-                       document.querySelector('.se-publish-btn') || 
-                       Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.trim() === '발행');
-        if (pubBtn) {
-          pubBtn.focus();
-          pubBtn.click();
-        }
-      });
+      console.log('Verifying 1st Publish Layer Popup opening...');
+      let popupOpened = false;
 
-      console.log('Dispatched 1st Publish Click! Waiting 4s for Layer Popup...');
-      await page.waitForTimeout(4000);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await page.evaluate(() => {
+          const btn = document.querySelector('.btn_publish') || 
+                      document.querySelector('.se-publish-btn') || 
+                      document.querySelector('button[class*="publish"]') || 
+                      Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.trim() === '발행');
+          if (btn) btn.click();
+        });
+
+        await page.waitForTimeout(2500);
+
+        const isLayerVisible = await page.evaluate(() => {
+          const layer = document.querySelector('[class*="publish_layer"]') || document.querySelector('[class*="layer_publish"]');
+          return layer && layer.offsetWidth > 0 && layer.offsetHeight > 0;
+        });
+
+        if (isLayerVisible) {
+          console.log('Layer Popup successfully OPENED on attempt ' + (attempt + 1));
+          popupOpened = true;
+          break;
+        }
+      }
+
+      if (!popupOpened) {
+        console.log('Fallback: clicking publish button inside frame...');
+        await frame.evaluate(() => {
+          const btn = document.querySelector('.btn_publish, button[class*="publish"]');
+          if (btn) btn.click();
+        });
+        await page.waitForTimeout(3000);
+      }
 
       await page.keyboard.press('Escape');
       await page.waitForTimeout(800);
@@ -253,7 +273,11 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
       await page.keyboard.press('Enter');
 
-      console.log('Publish submit completed! Waiting 6s for post registration...');
+      console.log('Publish submit triggered! Waiting 12s for server post completion...');
+      await page.waitForTimeout(12000);
+
+      console.log('Navigating directly to user Blog PostList page to verify publication: https://blog.naver.com/PostList.naver?blogId=' + naverId);
+      await page.goto('https://blog.naver.com/PostList.naver?blogId=' + naverId);
       await page.waitForTimeout(6000);
 
       const screenshotPath = path.join(targetTopicDir, 'naver_upload_result.png');
