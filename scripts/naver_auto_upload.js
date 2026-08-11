@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Clean Dialog Close & 5sec Green Click Uploader for ID: ' + naverId);
+  console.log('Starting Blur Focus & 3-Way Publish Solution Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -209,19 +209,26 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     }
 
     console.log('All positioned text and images inserted successfully!');
-    console.log('Closing any open file attachment dialogs/layers before publishing...');
+    console.log('Closing ANY open file attachment dialogs, file explorer popups, and layers cleanly...');
     
-    // 파일 첨부 창 및 레이어 100% 닫기
+    // 파일 첨부 창/탐색기 레이어 100% 닫기
     await frame.evaluate(() => {
       const closeBtns = Array.from(document.querySelectorAll('.se-popup-button-cancel, .se-popup-close-button, [class*="close"]'));
       closeBtns.forEach(b => b.click());
     });
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(1500);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(2000);
 
-    // 5. 1차 발행 버튼 클릭 ➔ 2차 발행 레이어 팝업 마우스 오버 ➔ 초록색 5초 머무름 ➔ 마우스 클릭
+    // 5. 에디터 외부 포커스 완전 이탈 (Blur Focus) ➔ 1차 발행 팝업 노출 ➔ 2차 초록색 발행 버튼 5초 체류 ➔ 3중 클릭
     if (uploadMode === 'publish') {
+      console.log('Executing Solution 1: Blur Focus by clicking outside editor header...');
+      try {
+        await page.click('body', { position: { x: 10, y: 10 } });
+        await page.waitForTimeout(800);
+      } catch (e) {}
+
       console.log('Verifying 1st Publish Layer Popup opening...');
       let popupOpened = false;
 
@@ -284,11 +291,24 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
         console.log('Button hovered! Waiting and holding mouse for EXACTLY 5 SECONDS while button is GREEN...');
         await page.waitForTimeout(5000);
 
-        console.log('5 SECONDS HOLD COMPLETE! Pressing mouse down and up on 2nd GREEN Publish Button!');
+        console.log('5 SECONDS HOLD COMPLETE! Executing 3-Way Triple Click (Mouse Down/Up + Playwright Click + DOM Dispatch)...');
         await page.mouse.down();
         await page.waitForTimeout(150);
         await page.mouse.up();
         await page.mouse.click(confirmBtnCoord.x, confirmBtnCoord.y);
+
+        await page.evaluate((coord) => {
+          const layer = document.querySelector('[class*="publish_layer"]') || document.querySelector('[class*="layer_publish"]') || document.body;
+          const btns = Array.from(layer.querySelectorAll('button, a'));
+          const target = btns.find(b => {
+            const txt = b.innerText ? b.innerText.trim() : '';
+            return (txt === '발행' || txt.includes('발행')) && !b.className.includes('se-publish-btn');
+          });
+          if (target) {
+            target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+            target.click();
+          }
+        }, confirmBtnCoord);
       } else {
         console.log('Fallback click for 2nd publish button...');
         await page.evaluate(() => {
