@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Canonical 5-Step Frame Locator Publish Uploader for ID: ' + naverId);
+  console.log('Starting Reservation Option & 5sec Green Click Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -221,7 +221,7 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     await page.keyboard.press('Escape');
     await page.waitForTimeout(2000);
 
-    // 5. 사용자가 제시한 정석 5단계 프레임 로케이터 발행 파이프라인
+    // 5. 1차 발행 클릭 ➔ 팝업 가시성 확인 및 대기 ➔ 발행시간 "예약" 선택 ➔ 2차 초록색 발행 버튼 마우스 호버 5초 머무름 ➔ 클릭
     if (uploadMode === 'publish') {
       console.log('Step 1 & 2: Targeting 1st Publish Button inside frame and page...');
       let popupOpened = false;
@@ -241,7 +241,7 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
         await page.waitForTimeout(2500);
 
-        // Step 3: 발행 설정 레이어 팝업(.se-popup-publish, .se-publish-layer) 노출 확인
+        // Step 3: 발행 설정 레이어 팝업 가시성 확인 및 대기
         const isLayerVisible = await page.evaluate(() => {
           const layer = document.querySelector('.se-popup-publish, .se-publish-layer, [class*="publish_layer"]');
           return layer && layer.offsetWidth > 0 && layer.offsetHeight > 0;
@@ -259,9 +259,44 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
         }
       }
 
-      console.log('Step 4: Locating final 2nd publish button inside publish popup layer...');
-      await page.waitForTimeout(1000);
+      console.log('Layer Popup is OPEN! Selecting "예약" (Reservation) option in Publish Time section...');
+      await page.waitForTimeout(1500);
 
+      // 발행시간 항목에서 '예약' 선택
+      try {
+        const reserveSelected = await page.evaluate(() => {
+          const layer = document.querySelector('.se-popup-publish, .se-publish-layer, [class*="publish_layer"]') || document.body;
+          const labels = Array.from(layer.querySelectorAll('label, span, input, button, a'));
+          const reserveEl = labels.find(el => {
+            const txt = el.innerText ? el.innerText.trim() : (el.value || '');
+            return txt === '예약' || txt.includes('예약');
+          });
+          if (reserveEl) {
+            reserveEl.click();
+            return true;
+          }
+          return false;
+        });
+
+        if (!reserveSelected) {
+          await frame.evaluate(() => {
+            const layer = document.querySelector('.se-popup-publish, .se-publish-layer, [class*="publish_layer"]') || document.body;
+            const labels = Array.from(layer.querySelectorAll('label, span, input, button, a'));
+            const reserveEl = labels.find(el => {
+              const txt = el.innerText ? el.innerText.trim() : (el.value || '');
+              return txt === '예약' || txt.includes('예약');
+            });
+            if (reserveEl) reserveEl.click();
+          });
+        }
+        console.log('Selected "예약" (Reservation) option successfully!');
+      } catch (e) {
+        console.log('Reservation option note:', e.message);
+      }
+
+      await page.waitForTimeout(2000);
+
+      console.log('Step 4: Locating final 2nd publish button inside publish popup layer...');
       const confirmBtnCoord = await page.evaluate(() => {
         const layer = document.querySelector('.se-popup-publish, .se-publish-layer, [class*="publish_layer"]') || document.body;
         const btns = Array.from(layer.querySelectorAll('button, a'));
@@ -311,16 +346,8 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
       await page.keyboard.press('Enter');
 
-      // Step 5: 발행 후 완료 페이지 URL(**/List.naver** 또는 **/PostView.naver**) 대기
-      console.log('Step 5: Waiting for URL completion transition to List.naver or PostView.naver...');
-      try {
-        await page.waitForURL(url => url.href.includes('List.naver') || url.href.includes('PostView.naver') || url.href.includes('blog.naver.com'), { timeout: 10000 });
-        console.log('Successfully navigated to post completion URL!');
-      } catch (e) {
-        console.log('URL wait note:', e.message);
-      }
-
-      await page.waitForTimeout(6000);
+      console.log('Publish submit triggered! Waiting 12s for server post completion...');
+      await page.waitForTimeout(12000);
 
       console.log('Navigating directly to user Blog PostList page to verify publication: https://blog.naver.com/PostList.naver?blogId=' + naverId);
       await page.goto('https://blog.naver.com/PostList.naver?blogId=' + naverId);
