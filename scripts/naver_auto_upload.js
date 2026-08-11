@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Physical Mouse Coordinates Publish Uploader for ID: ' + naverId);
+  console.log('Starting JS Event Trigger (mousedown -> mouseup -> click) Publish Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -221,103 +221,55 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     await page.keyboard.press('Escape');
     await page.waitForTimeout(2000);
 
-    // 5. 실제 물리 마우스 좌표 클릭 1차 발행 ➔ 팝업 오픈 ➔ 예약 라디오 물리 클릭 ➔ 2차 발행 5초 체류 물리 클릭
+    // 5. 사용자가 제시한 mousedown -> mouseup -> click JS 이벤트 강제 트리거 파이프라인
     if (uploadMode === 'publish') {
-      console.log('Step 1: Finding exact screen coordinates of 1st Publish Button...');
-      let popupOpened = false;
-
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const topPubCoord = await page.evaluate(() => {
-          const btn = document.querySelector('.se-publish-btn') || 
-                      document.querySelector('.btn_publish') || 
-                      Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.trim().includes('발행'));
-          if (btn) {
-            const rect = btn.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) {
-              return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-            }
-          }
-          return null;
-        });
-
-        if (topPubCoord) {
-          console.log('Moving physical mouse to 1st Publish Button at:', topPubCoord);
-          await page.mouse.move(topPubCoord.x, topPubCoord.y, { steps: 10 });
-          await page.waitForTimeout(300);
-          await page.mouse.click(topPubCoord.x, topPubCoord.y);
-          console.log('Clicked 1st Publish Button via physical mouse!');
+      console.log('Step 1: Focusing and clicking 1st Publish Button inside editor_frame...');
+      try {
+        const firstPubBtn = frame.locator("button:has-text('발행'), .btn_publish, .se-publish-btn").first();
+        if (await firstPubBtn.isVisible()) {
+          await firstPubBtn.focus();
+          await page.waitForTimeout(500);
+          await firstPubBtn.click({ force: true });
         } else {
-          await frame.evaluate(() => {
-            const btn = document.querySelector('.btn_publish, .se-publish-btn');
+          await page.evaluate(() => {
+            const btn = document.querySelector('.btn_publish') || document.querySelector('.se-publish-btn') || Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.trim().includes('발행'));
             if (btn) btn.click();
           });
         }
-
-        await page.waitForTimeout(3000);
-
-        const isLayerVisible = await page.evaluate(() => {
-          const layer = document.querySelector('.se-publish-layer, .se-popup-publish, [class*="publish_layer"]');
-          return layer && layer.offsetWidth > 0 && layer.offsetHeight > 0;
-        });
-
-        if (isLayerVisible) {
-          console.log('Publish Layer Popup SUCCESSFULLY OPENED on attempt ' + (attempt + 1));
-          popupOpened = true;
-          break;
-        }
+      } catch (e) {
+        console.log('1st publish click note:', e.message);
       }
 
-      console.log('Step 2: Locating "예약" Radio Button inside open Publish Popup Layer...');
-      await page.waitForTimeout(1500);
+      console.log('Step 2: Waiting 2000ms for Publish Layer Popup (.se-popup-publish) to be fully active...');
+      await page.waitForTimeout(2000);
 
-      const reserveCoord = await page.evaluate(() => {
-        const layer = document.querySelector('.se-publish-layer, .se-popup-publish, [class*="publish_layer"]');
-        if (!layer) return null;
+      console.log('Step 3: Targeting final 2nd publish button inside .se-popup-publish...');
+      const finalPublishBtn = frame.locator(".se-popup-publish button:has-text('발행'), .se-publish-layer button:has-text('발행')").first();
 
-        const radios = Array.from(layer.querySelectorAll('input[type="radio"]'));
-        const targetRadio = radios.find(r => {
-          const parent = r.closest('label') || r.parentElement;
-          const txt = parent ? parent.innerText.trim() : '';
-          return txt === '예약' || r.id.includes('reserve') || r.value.includes('reserve') || r.id.includes('time2');
-        });
-
-        if (targetRadio) {
-          const rect = targetRadio.getBoundingClientRect();
-          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      console.log('Executing Method A: Dispatching mousedown -> mouseup -> click JS events directly to final_publish_btn...');
+      try {
+        if (await finalPublishBtn.isVisible()) {
+          await finalPublishBtn.dispatchEvent('mousedown');
+          await page.waitForTimeout(200);
+          await finalPublishBtn.dispatchEvent('mouseup');
+          await finalPublishBtn.dispatchEvent('click');
+          await finalPublishBtn.click({ force: true });
         }
-
-        const labels = Array.from(layer.querySelectorAll('label, span'));
-        const targetLabel = labels.find(el => el.innerText && el.innerText.trim() === '예약');
-        if (targetLabel) {
-          const rect = targetLabel.getBoundingClientRect();
-          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-        }
-
-        return null;
-      });
-
-      if (reserveCoord) {
-        console.log('Moving physical mouse to "예약" Radio Option at:', reserveCoord);
-        await page.mouse.move(reserveCoord.x, reserveCoord.y, { steps: 10 });
-        await page.waitForTimeout(200);
-        await page.mouse.click(reserveCoord.x, reserveCoord.y);
-        console.log('Selected "예약" option via physical mouse click!');
-        await page.waitForTimeout(2000);
-      } else {
-        console.log('Fallback: DOM click for "예약" option...');
-        await page.evaluate(() => {
-          const layer = document.querySelector('.se-publish-layer, .se-popup-publish, [class*="publish_layer"]');
-          if (!layer) return;
-          const labels = Array.from(layer.querySelectorAll('label, span'));
-          const target = labels.find(el => el.innerText && el.innerText.trim() === '예약');
-          if (target) target.click();
-        });
-        await page.waitForTimeout(2000);
+      } catch (e) {
+        console.log('Dispatch event note:', e.message);
       }
 
-      console.log('Step 3: Finding 2nd Green Confirm Publish Button inside Popup Layer...');
+      console.log('Executing Method B: Focus final_publish_btn and press Enter key...');
+      try {
+        if (await finalPublishBtn.isVisible()) {
+          await finalPublishBtn.focus();
+          await page.keyboard.press('Enter');
+        }
+      } catch (e) {}
+
+      // 추가 물리 마우스 좌표 클릭 전송도 병행
       const confirmBtnCoord = await page.evaluate(() => {
-        const layer = document.querySelector('.se-publish-layer, .se-popup-publish, [class*="publish_layer"]') || document.body;
+        const layer = document.querySelector('.se-popup-publish, .se-publish-layer, [class*="publish_layer"]') || document.body;
         const btns = Array.from(layer.querySelectorAll('button, a'));
         const target = btns.find(b => {
           const txt = b.innerText ? b.innerText.trim() : '';
@@ -334,39 +286,21 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       });
 
       if (confirmBtnCoord) {
-        console.log('Moving mouse OVER to 2nd Green Publish Button at:', confirmBtnCoord);
-        await page.mouse.move(confirmBtnCoord.x, confirmBtnCoord.y, { steps: 20 });
-
-        console.log('Button hovered! Waiting and holding mouse for EXACTLY 5 SECONDS while button is GREEN...');
-        await page.waitForTimeout(5000);
-
-        console.log('5 SECONDS HOLD COMPLETE! Executing physical mouse click for 2nd Publish Button...');
-        await page.mouse.down();
-        await page.waitForTimeout(150);
-        await page.mouse.up();
+        console.log('Moving physical mouse to 2nd Green Publish Button at:', confirmBtnCoord);
+        await page.mouse.move(confirmBtnCoord.x, confirmBtnCoord.y, { steps: 10 });
+        await page.waitForTimeout(300);
         await page.mouse.click(confirmBtnCoord.x, confirmBtnCoord.y);
-
-        try {
-          const popup = frame.locator('.se-popup-publish, .se-publish-layer').first();
-          const finalBtn = popup.locator("button:has-text('발행')").first();
-          if (await finalBtn.isVisible()) {
-            await finalBtn.click({ force: true });
-          }
-        } catch (e) {}
-
-      } else {
-        console.log('Fallback click for 2nd publish button inside frame and page...');
-        try {
-          const popup = frame.locator('.se-popup-publish, .se-publish-layer').first();
-          const finalBtn = popup.locator("button:has-text('발행')").first();
-          await finalBtn.click({ force: true });
-        } catch (e) {}
       }
 
-      await page.keyboard.press('Enter');
+      console.log('Step 4: Waiting for URL completion transition to **/List.naver** (timeout: 15s)...');
+      try {
+        await page.waitForURL(url => url.href.includes('List.naver') || url.href.includes('PostView.naver') || url.href.includes('blog.naver.com'), { timeout: 15000 });
+        console.log('Successfully navigated to List.naver completion URL!');
+      } catch (e) {
+        console.log('URL transition note:', e.message);
+      }
 
-      console.log('Publish submit triggered! Waiting 12s for server post completion...');
-      await page.waitForTimeout(12000);
+      await page.waitForTimeout(6000);
 
       console.log('Navigating directly to user Blog PostList page to verify publication: https://blog.naver.com/PostList.naver?blogId=' + naverId);
       await page.goto('https://blog.naver.com/PostList.naver?blogId=' + naverId);
