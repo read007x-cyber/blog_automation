@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Precision Fallback Hover & Click Uploader for ID: ' + naverId);
+  console.log('Starting Blur Focus & Guaranteed Hover Green Click Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -192,72 +192,59 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     console.log('All text blocks and images inserted successfully!');
     await page.waitForTimeout(3000);
 
-    // 5. 1차 발행 클릭 ➔ 4초 대기 ➔ 2차 발행 버튼 마우스 호버(Hover) 오버 ➔ 1.5초 초록색 변경 대기 ➔ 마우스 클릭
+    // 5. 에디터 본문 포커스 해제 후 1차 발행 ➔ 우측 팝업 2차 발행 마우스 호버(Hover) 오버 ➔ 1.5초 대기 ➔ 마우스 클릭
     if (uploadMode === 'publish') {
-      console.log('Clicking 1st publish button with multiple fallbacks...');
-      let popupOpened = false;
+      console.log('Releasing body focus with Escape key...');
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(1000);
 
-      try {
-        const pBtn = await frame.$('button[class*="publish_btn"], button.publish_btn, .btn_publish');
-        if (pBtn) {
-          await pBtn.click();
-          popupOpened = true;
+      console.log('Triggering 1st publish button in page DOM...');
+      await page.evaluate(() => {
+        const pubBtn = document.querySelector('button[class*="publish"]') || 
+                       document.querySelector('.btn_publish') || 
+                       document.querySelector('.se-publish-btn') || 
+                       Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.trim() === '발행');
+        if (pubBtn) {
+          pubBtn.focus();
+          pubBtn.click();
         }
-      } catch (e) {}
+      });
 
-      if (!popupOpened) {
-        try {
-          const pBtnOnPage = await page.$('button[class*="publish_btn"], button.publish_btn, .btn_publish');
-          if (pBtnOnPage) {
-            await pBtnOnPage.click();
-            popupOpened = true;
-          }
-        } catch (e) {}
-      }
-
-      if (!popupOpened) {
-        await frame.evaluate(() => {
-          const btns = Array.from(document.querySelectorAll('button'));
-          const pub = btns.find(b => b.innerText && b.innerText.trim() === '발행');
-          if (pub) pub.click();
-        });
-      }
-
-      console.log('Waiting 4s for 2nd Layer Popup rendering...');
+      console.log('Dispatched 1st Publish Click! Waiting 4s for Layer Popup...');
       await page.waitForTimeout(4000);
 
       await page.keyboard.press('Escape');
       await page.waitForTimeout(800);
 
-      console.log('Targeting 2nd Layer Popup Publish Button for Hover & Click...');
-
-      let targetBox = null;
-      const confirmBtn = await page.$('.confirm_btn, .btn_confirm, button[class*="confirm_btn"], button[class*="publish_btn"]');
-      if (confirmBtn && await confirmBtn.isVisible()) {
-        targetBox = await confirmBtn.boundingBox();
-      }
-
-      if (!targetBox) {
-        const confirmOnFrame = await frame.$('.confirm_btn, .btn_confirm, button[class*="confirm_btn"], button[class*="publish_btn"]');
-        if (confirmOnFrame && await confirmOnFrame.isVisible()) {
-          targetBox = await confirmOnFrame.boundingBox();
+      console.log('Calculating absolute coordinates for 2nd Layer Popup Confirm Button...');
+      const confirmBtnCoord = await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('button, a'));
+        const target = btns.find(b => {
+          const txt = b.innerText ? b.innerText.trim() : '';
+          const isPub = txt === '발행' || txt.includes('발행');
+          const isNotTop = !b.className.includes('toolbar') && !b.className.includes('se-publish-btn');
+          const isVis = b.offsetWidth > 0 && b.offsetHeight > 0;
+          return isPub && isNotTop && isVis;
+        });
+        if (target) {
+          const rect = target.getBoundingClientRect();
+          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
         }
-      }
+        return null;
+      });
 
-      if (targetBox) {
-        const centerX = targetBox.x + targetBox.width / 2;
-        const centerY = targetBox.y + targetBox.height / 2;
-        
-        console.log('Moving mouse OVER to 2nd Publish Button at:', { centerX, centerY });
-        await page.mouse.move(centerX, centerY, { steps: 12 });
+      if (confirmBtnCoord) {
+        console.log('Moving mouse OVER to 2nd Publish Button at:', confirmBtnCoord);
+        await page.mouse.move(confirmBtnCoord.x, confirmBtnCoord.y, { steps: 12 });
         
         console.log('Waiting 1.5s for button to turn GREEN on mouse hover...');
         await page.waitForTimeout(1500);
 
         console.log('Clicking 2nd GREEN Publish Button!');
-        await page.mouse.click(centerX, centerY);
+        await page.mouse.click(confirmBtnCoord.x, confirmBtnCoord.y);
       } else {
-        console.log('Fallback JS click for 2nd publish button...');
+        console.log('Fallback click for 2nd publish button...');
         await page.evaluate(() => {
           const confirm = document.querySelector('.confirm_btn, .btn_confirm, button[class*="confirm_btn"]');
           if (confirm) confirm.click();
