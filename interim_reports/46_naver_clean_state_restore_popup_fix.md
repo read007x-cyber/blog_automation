@@ -7,7 +7,7 @@
 ## 1. 정밀 구축 사양
 
 * 브라우저 시작 플래그 및 복원 팝업 자동 닫기:
-  1. hide-crash-restore-bubble 및 disable-restore-session-state 기동 옵션 적용
+  1. 복원 창 차단 기동 옵션 적용
   2. 에디터 진입 후 Escape 키 전송 및 취소 새로쓰기 닫기 버튼을 클릭하여 복원 모달 완전 제거
 * 파일 탐색기 창 유발 차단 및 클린 상태 확보:
   1. 상단 사진 버튼 타격 대신 DOM 레벨 input[type="file"]에 setInputFiles 직접 주입
