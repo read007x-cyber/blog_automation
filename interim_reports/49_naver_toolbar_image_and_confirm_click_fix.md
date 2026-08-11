@@ -7,7 +7,7 @@
 ## 1. 정밀 개편 및 성공 내역
 
 * 상단 툴바 사진 버튼 타격 및 이미지 첨부 무결점화:
-  1. 본문 작성 완결 후 상단 툴바의 사진 버튼(button.se-image-toolbar-button, [class*="image"])을 클릭
+  1. 본문 작성 완결 후 상단 툴바의 사진 버튼을 클릭
   2. 노출되는 input[type="file"] 에 setInputFiles 주입 후 change dispatchEvent 전송
   3. 이미지 삽입 렌더링을 위해 4초 대기 후 다음 첨부 진행
 * 2차 발행 레이어 팝업 내부 초록색 버튼 100% 타격 및 포스팅 완결:
