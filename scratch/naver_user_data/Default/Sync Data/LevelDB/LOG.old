@@ -1,3 +1,3 @@
-2026/08/11-00:15:26.007 a5e0b8 Reusing MANIFEST /Users/jsh/main/scratch/naver_user_data/Default/Sync Data/LevelDB/MANIFEST-000001
-2026/08/11-00:15:26.029 a5e0b8 Recovering log #3
-2026/08/11-00:15:26.030 a5e0b8 Reusing old log /Users/jsh/main/scratch/naver_user_data/Default/Sync Data/LevelDB/000003.log 
+2026/08/11-10:25:28.001 a7eae9 Reusing MANIFEST /Users/jsh/main/scratch/naver_user_data/Default/Sync Data/LevelDB/MANIFEST-000001
+2026/08/11-10:25:28.022 a7eae9 Recovering log #3
+2026/08/11-10:25:28.022 a7eae9 Reusing old log /Users/jsh/main/scratch/naver_user_data/Default/Sync Data/LevelDB/000003.log 
