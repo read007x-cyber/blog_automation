@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Persistent Keep Open Browser Uploader for ID: ' + naverId);
+  console.log('Starting Physical Mouse Click & Permanent Open Browser Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -192,15 +192,18 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     console.log('All text blocks and images inserted successfully!');
     await page.waitForTimeout(3000);
 
-    // 5. 발행 실행 및 브라우저 창 지속 유지
+    // 5. 물리 마우스 좌표 클릭 및 브라우저 창 영구 대기
     if (uploadMode === 'publish') {
       console.log('Publish Mode Active: Clicking 1st Main Publish Button...');
       
       let clicked1st = false;
       const firstPubOnPage = await page.$('button[class*="publish"], .btn_publish');
       if (firstPubOnPage && await firstPubOnPage.isVisible()) {
-        await firstPubOnPage.click();
-        clicked1st = true;
+        const box = await firstPubOnPage.boundingBox();
+        if (box) {
+          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+          clicked1st = true;
+        }
       }
       if (!clicked1st) {
         const firstPubOnFrame = await frame.$('button[class*="publish"], .btn_publish');
@@ -213,22 +216,28 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       await page.keyboard.press('Escape');
       await page.waitForTimeout(800);
 
-      console.log('Targeting confirm_btn in Layer Popup on main page DOM...');
+      console.log('Targeting physical mouse click on 2nd publish button in Layer Popup...');
       
       let clicked2nd = false;
       const confirmOnPage = await page.$('.confirm_btn, .btn_confirm, button[class*="confirm_btn"], button[class*="publish_btn"]');
       if (confirmOnPage && await confirmOnPage.isVisible()) {
-        await confirmOnPage.click({ force: true });
-        console.log('Force clicked confirm_btn on main page DOM!');
-        clicked2nd = true;
+        const box = await confirmOnPage.boundingBox();
+        if (box) {
+          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+          console.log('Physically clicked (x, y) on 2nd publish button on main page DOM!');
+          clicked2nd = true;
+        }
       }
 
       if (!clicked2nd) {
         const confirmOnFrame = await frame.$('.confirm_btn, .btn_confirm, button[class*="confirm_btn"], button[class*="publish_btn"]');
         if (confirmOnFrame && await confirmOnFrame.isVisible()) {
-          await confirmOnFrame.click({ force: true });
-          console.log('Force clicked confirm_btn on mainFrame DOM!');
-          clicked2nd = true;
+          const box = await confirmOnFrame.boundingBox();
+          if (box) {
+            await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+            console.log('Physically clicked (x, y) on 2nd publish button on mainFrame DOM!');
+            clicked2nd = true;
+          }
         }
       }
 
@@ -242,8 +251,11 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
       await page.keyboard.press('Enter');
 
-      console.log('Publish submit triggered! Keeping browser window OPEN permanently for user observation...');
-      await page.waitForTimeout(8000);
+      console.log('Publish submit triggered! Keeping browser window PERMANENTLY OPEN on screen...');
+      const screenshotPath = path.join(targetTopicDir, 'naver_upload_result.png');
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log('Saved result screenshot to: ' + screenshotPath);
+
     } else {
       console.log('Draft Mode Active: Clicking Save Button...');
       try {
@@ -255,14 +267,11 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       } catch (e) {}
     }
 
-    const screenshotPath = path.join(targetTopicDir, 'naver_upload_result.png');
-    await page.screenshot({ path: screenshotPath, fullPage: true });
-    console.log('Saved result screenshot to: ' + screenshotPath);
-    console.log('Finished upload task. Browser stays open as requested!');
-
   } catch (err) {
     console.log('Error during execution:', err);
-  } finally {
-    process.exit(0);
   }
+
+  // Permanent keep open loop so browser never closes!
+  console.log('Browser window is now KEPT OPEN PERMANENTLY. You can inspect it directly on your screen!');
+  await new Promise(() => {});
 })();
