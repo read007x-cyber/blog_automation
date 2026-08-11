@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Positioned Image & 5sec Hover Hold Uploader for ID: ' + naverId);
+  console.log('Starting Clean Dialog Close & 5sec Green Click Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -151,7 +151,7 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       await page.waitForTimeout(800);
     } catch (e) {}
 
-    // 4. 본문 텍스트 작성 후 지정 위치별 이미지 첨부 & 열린 파일 창 닫기
+    // 4. 본문 텍스트 작성 후 위치별 이미지 첨부
     console.log('Processing ' + parsedBlocks.length + ' blocks in exact content positions...');
 
     for (let index = 0; index < parsedBlocks.length; index++) {
@@ -202,21 +202,25 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
             });
             console.log('Attached positioned image successfully: ' + block.filename);
             await page.waitForTimeout(4000);
-
-            // 파일 첨부 완료 후 열려 있는 첨부 창 및 레이어 100% 닫기
-            await page.keyboard.press('Escape');
-            await page.waitForTimeout(500);
             await page.keyboard.press('Enter');
           }
         }
       }
     }
 
-    console.log('All positioned text and images inserted! Clearing remaining popups cleanly...');
+    console.log('All positioned text and images inserted successfully!');
+    console.log('Closing any open file attachment dialogs/layers before publishing...');
+    
+    // 파일 첨부 창 및 레이어 100% 닫기
+    await frame.evaluate(() => {
+      const closeBtns = Array.from(document.querySelectorAll('.se-popup-button-cancel, .se-popup-close-button, [class*="close"]'));
+      closeBtns.forEach(b => b.click());
+    });
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(1000);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(1500);
 
-    // 5. 1차 발행 버튼 클릭 ➔ 2차 발행 레이어 팝업 마우스 오버 ➔ 5초 머무름 ➔ 초록색 발행 버튼 클릭
+    // 5. 1차 발행 버튼 클릭 ➔ 2차 발행 레이어 팝업 마우스 오버 ➔ 초록색 5초 머무름 ➔ 마우스 클릭
     if (uploadMode === 'publish') {
       console.log('Verifying 1st Publish Layer Popup opening...');
       let popupOpened = false;
@@ -254,7 +258,7 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       }
 
       console.log('Layer Popup is OPEN! Moving mouse OVER to 2nd Green Publish Button...');
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(1500);
 
       const confirmBtnCoord = await page.evaluate(() => {
         const layer = document.querySelector('[class*="publish_layer"]') || document.querySelector('[class*="layer_publish"]') || document.body;
@@ -274,13 +278,16 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       });
 
       if (confirmBtnCoord) {
-        console.log('Hovering mouse over 2nd Publish Button at:', confirmBtnCoord);
-        await page.mouse.move(confirmBtnCoord.x, confirmBtnCoord.y, { steps: 15 });
+        console.log('Moving mouse cursor OVER to 2nd Publish Button at:', confirmBtnCoord);
+        await page.mouse.move(confirmBtnCoord.x, confirmBtnCoord.y, { steps: 20 });
         
-        console.log('Hover confirmed! Waiting and holding mouse for PRECISELY 5 SECONDS on 2nd Green Publish Button...');
+        console.log('Button hovered! Waiting and holding mouse for EXACTLY 5 SECONDS while button is GREEN...');
         await page.waitForTimeout(5000);
 
-        console.log('5 seconds hold complete! Clicking 2nd GREEN Publish Button now!');
+        console.log('5 SECONDS HOLD COMPLETE! Pressing mouse down and up on 2nd GREEN Publish Button!');
+        await page.mouse.down();
+        await page.waitForTimeout(150);
+        await page.mouse.up();
         await page.mouse.click(confirmBtnCoord.x, confirmBtnCoord.y);
       } else {
         console.log('Fallback click for 2nd publish button...');
