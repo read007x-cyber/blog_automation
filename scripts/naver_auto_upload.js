@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Dual DOM Reservation Publish Uploader for ID: ' + naverId);
+  console.log('Starting Simplified Reservation Publish Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -84,7 +84,7 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
     console.log('SmartEditor mainFrame located.');
 
-    // 1. 진입 시 팝업 닫기
+    // 1. 진입 시 작성 중인 글 및 모달 팝업 닫기
     try {
       await page.keyboard.press('Escape');
       await frame.evaluate(() => {
@@ -96,7 +96,7 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
     await page.waitForTimeout(2000);
 
-    // 2. 제목 란 포커싱 및 정확 타이핑
+    // 2. 제목 란 포커싱 및 타이핑
     console.log('Focusing Title Input Element...');
     try {
       const titleHandle = await frame.$('.se-document-title-text, .se-title-text, [class*="title-text"]');
@@ -192,7 +192,7 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     console.log('All text blocks and images inserted successfully!');
     await page.waitForTimeout(3000);
 
-    // 5. Dual DOM (Page + iFrame) 예약 전환 및 1분 뒤 수정 후 5초 대기 2차 발행 클릭
+    // 5. 1차 발행 클릭 ➔ 예약 선택 (분 수정 생략) ➔ 5초 대기 ➔ 맨 아래 발행 버튼 클릭
     if (uploadMode === 'publish') {
       console.log('Publish Mode Active: Clicking 1st Main Publish Button...');
       await frame.click('button[class*="publish"], .btn_publish');
@@ -201,56 +201,60 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       await page.keyboard.press('Escape');
       await page.waitForTimeout(800);
 
-      const triggerReservationActions = async (container) => {
+      console.log('Selecting "예약" option in Layer Popup (skipping minute edit)...');
+      const selectReservation = async (container) => {
         return container.evaluate(() => {
           const radioRes = document.querySelector('input[id*="reservation"], input[value="1"], label[for*="reservation"]');
-          if (radioRes) radioRes.click();
-
-          const selects = Array.from(document.querySelectorAll('select'));
-          const minSelect = selects.find(s => s.className.includes('minute') || s.id.includes('minute') || s.options.length === 60 || s.options.length === 12);
-          if (minSelect) {
-            minSelect.selectedIndex = (minSelect.selectedIndex + 1) % minSelect.options.length;
-            minSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          if (radioRes) {
+            radioRes.click();
+            return true;
           }
-        });
-      };
-
-      console.log('Triggering Reservation Radio & Minute modification in Dual DOM...');
-      await triggerReservationActions(frame);
-      await triggerReservationActions(page);
-
-      console.log('Waiting 5 seconds for Reservation Form synchronization...');
-      await page.waitForTimeout(5000);
-
-      const triggerFinalPublish = async (container) => {
-        return container.evaluate(() => {
-          const btns = Array.from(document.querySelectorAll('button, a'));
-          const pubBtn = btns.find(b => {
-            const txt = b.innerText ? b.innerText.trim() : '';
-            const isPublishText = txt === '발행';
-            const isNotTopToolbar = !b.className.includes('toolbar');
-            const isVisible = b.offsetWidth > 0 && b.offsetHeight > 0;
-            return isPublishText && isNotTopToolbar && isVisible;
-          });
-          if (pubBtn) {
-            pubBtn.focus();
-            pubBtn.click();
+          const labels = Array.from(document.querySelectorAll('label, span'));
+          const rOpt = labels.find(l => l.innerText && l.innerText.trim() === '예약');
+          if (rOpt) {
+            rOpt.click();
             return true;
           }
           return false;
         });
       };
 
-      console.log('Clicking Bottom 2nd Publish Button in Dual DOM...');
-      await triggerFinalPublish(frame);
-      await triggerFinalPublish(page);
+      await selectReservation(frame);
+      await selectReservation(page);
+
+      console.log('Waiting 5 seconds as requested by user before final submit...');
+      await page.waitForTimeout(5000);
+
+      console.log('Clicking Bottom 2nd Publish Button in Layer Popup...');
+      const clickFinalPublish = async (container) => {
+        return container.evaluate(() => {
+          const popupLayer = document.querySelector('[class*="publish_layer"]') || document.querySelector('[class*="popup"]') || document;
+          const btns = Array.from(popupLayer.querySelectorAll('button, a'));
+          const targetBtn = btns.find(b => {
+            const txt = b.innerText ? b.innerText.trim() : '';
+            const isPublishText = txt === '발행';
+            const isNotTopToolbar = !b.className.includes('toolbar');
+            const isVisible = b.offsetWidth > 0 && b.offsetHeight > 0;
+            return isPublishText && isNotTopToolbar && isVisible;
+          });
+          if (targetBtn) {
+            targetBtn.focus();
+            targetBtn.click();
+            return true;
+          }
+          return false;
+        });
+      };
+
+      await clickFinalPublish(frame);
+      await clickFinalPublish(page);
 
       await page.keyboard.press('Enter');
 
-      console.log('Reservation Publish triggered. Waiting 10s for post publication...');
+      console.log('Reservation Publish completed. Waiting 10s...');
       await page.waitForTimeout(10000);
 
-      console.log('Navigating directly to user Blog PostList page to verify reservation publication: https://blog.naver.com/PostList.naver?blogId=' + naverId);
+      console.log('Navigating directly to user Blog PostList page to verify publication: https://blog.naver.com/PostList.naver?blogId=' + naverId);
       await page.goto('https://blog.naver.com/PostList.naver?blogId=' + naverId);
       await page.waitForTimeout(6000);
     } else {
