@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Toolbar Image & Dual Click Confirm Uploader for ID: ' + naverId);
+  console.log('Starting Positioned Image & 5sec Hover Hold Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -151,72 +151,72 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       await page.waitForTimeout(800);
     } catch (e) {}
 
-    // 4. 본문 텍스트 전체 선작성
-    console.log('Writing ALL body text content first...');
-    const allTextBlocks = parsedBlocks.filter(b => b.type === 'text');
-    for (let index = 0; index < allTextBlocks.length; index++) {
-      const block = allTextBlocks[index];
-      console.log('Typing text block ' + (index + 1) + '/' + allTextBlocks.length + '...');
-      const textLines = block.content.split('\n');
-      for (const line of textLines) {
-        if (line.trim().length > 0) {
-          await page.keyboard.type(line.trim(), { delay: 30 });
-          await page.keyboard.press('Enter');
-          await page.waitForTimeout(150);
-        } else {
-          await page.keyboard.press('Enter');
+    // 4. 본문 텍스트 작성 후 지정 위치별 이미지 첨부 & 열린 파일 창 닫기
+    console.log('Processing ' + parsedBlocks.length + ' blocks in exact content positions...');
+
+    for (let index = 0; index < parsedBlocks.length; index++) {
+      const block = parsedBlocks[index];
+
+      if (block.type === 'text') {
+        console.log('Typing text block ' + (index + 1) + '/' + parsedBlocks.length + '...');
+        const textLines = block.content.split('\n');
+        for (const line of textLines) {
+          if (line.trim().length > 0) {
+            await page.keyboard.type(line.trim(), { delay: 30 });
+            await page.keyboard.press('Enter');
+            await page.waitForTimeout(150);
+          } else {
+            await page.keyboard.press('Enter');
+          }
         }
-      }
-    }
+      } else if (block.type === 'image') {
+        const imagePath = path.join(imagesDir, block.filename);
+        console.log('Attaching positioned image for ' + block.filename + ' at content location...');
 
-    console.log('All text content written successfully! Now attaching ALL 5 images via toolbar photo button...');
-    await page.waitForTimeout(2000);
-
-    // 5. 상단 툴바 사진 버튼 클릭 후 이미지 5종 첨부
-    const allImageBlocks = parsedBlocks.filter(b => b.type === 'image');
-    for (let index = 0; index < allImageBlocks.length; index++) {
-      const block = allImageBlocks[index];
-      const imagePath = path.join(imagesDir, block.filename);
-      console.log('Attaching image (' + (index + 1) + '/' + allImageBlocks.length + '): ' + block.filename);
-
-      if (fs.existsSync(imagePath)) {
-        try {
-          await frame.evaluate(() => {
-            const btns = Array.from(document.querySelectorAll('button, a'));
-            const imgBtn = btns.find(b => {
-              const txt = b.innerText ? b.innerText.trim() : '';
-              return txt.includes('사진') || b.className.includes('image');
+        if (fs.existsSync(imagePath)) {
+          try {
+            await frame.evaluate(() => {
+              const btns = Array.from(document.querySelectorAll('button, a'));
+              const imgBtn = btns.find(b => {
+                const txt = b.innerText ? b.innerText.trim() : '';
+                return txt.includes('사진') || b.className.includes('image');
+              });
+              if (imgBtn) imgBtn.click();
             });
-            if (imgBtn) imgBtn.click();
-          });
-          await page.waitForTimeout(1200);
-        } catch (e) {}
+            await page.waitForTimeout(1200);
+          } catch (e) {}
 
-        let fileInput = await frame.$('input[type="file"]');
-        if (!fileInput) {
-          fileInput = await page.$('input[type="file"]');
-        }
+          let fileInput = await frame.$('input[type="file"]');
+          if (!fileInput) {
+            fileInput = await page.$('input[type="file"]');
+          }
 
-        if (fileInput) {
-          await fileInput.setInputFiles(imagePath);
-          await frame.evaluate(() => {
-            const input = document.querySelector('input[type="file"]');
-            if (input) {
-              input.dispatchEvent(new Event('change', { bubbles: true }));
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-          });
-          console.log('Attached image successfully via Toolbar Photo Button: ' + block.filename);
-          await page.waitForTimeout(4000);
-          await page.keyboard.press('Enter');
+          if (fileInput) {
+            await fileInput.setInputFiles(imagePath);
+            await frame.evaluate(() => {
+              const input = document.querySelector('input[type="file"]');
+              if (input) {
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+            });
+            console.log('Attached positioned image successfully: ' + block.filename);
+            await page.waitForTimeout(4000);
+
+            // 파일 첨부 완료 후 열려 있는 첨부 창 및 레이어 100% 닫기
+            await page.keyboard.press('Escape');
+            await page.waitForTimeout(500);
+            await page.keyboard.press('Enter');
+          }
         }
       }
     }
 
-    console.log('All 5 images attached! Closing file chooser popups cleanly...');
-    await page.waitForTimeout(2000);
+    console.log('All positioned text and images inserted! Clearing remaining popups cleanly...');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(1000);
 
-    // 6. 1차 발행 버튼 클릭 ➔ 우측 레이어 팝업 노출 ➔ 2차 초록색 발행 버튼 마우스 호버 & 클릭 전송
+    // 5. 1차 발행 버튼 클릭 ➔ 2차 발행 레이어 팝업 마우스 오버 ➔ 5초 머무름 ➔ 초록색 발행 버튼 클릭
     if (uploadMode === 'publish') {
       console.log('Verifying 1st Publish Layer Popup opening...');
       let popupOpened = false;
@@ -253,34 +253,37 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
         await page.waitForTimeout(3000);
       }
 
-      console.log('Layer Popup is OPEN! Targeting 2nd Layer Popup Green Confirm Button...');
+      console.log('Layer Popup is OPEN! Moving mouse OVER to 2nd Green Publish Button...');
       await page.waitForTimeout(1000);
 
-      const confirmBtnHandle = await page.evaluateHandle(() => {
+      const confirmBtnCoord = await page.evaluate(() => {
         const layer = document.querySelector('[class*="publish_layer"]') || document.querySelector('[class*="layer_publish"]') || document.body;
         const btns = Array.from(layer.querySelectorAll('button, a'));
-        return btns.find(b => {
+        const target = btns.find(b => {
           const txt = b.innerText ? b.innerText.trim() : '';
           const isPub = txt === '발행' || txt.includes('발행');
           const isNotTop = !b.className.includes('toolbar') && !b.className.includes('se-publish-btn');
           const isVis = b.offsetWidth > 0 && b.offsetHeight > 0;
           return isPub && isNotTop && isVis;
         });
+        if (target) {
+          const rect = target.getBoundingClientRect();
+          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        }
+        return null;
       });
 
-      const confirmBtnEl = confirmBtnHandle.asElement();
+      if (confirmBtnCoord) {
+        console.log('Hovering mouse over 2nd Publish Button at:', confirmBtnCoord);
+        await page.mouse.move(confirmBtnCoord.x, confirmBtnCoord.y, { steps: 15 });
+        
+        console.log('Hover confirmed! Waiting and holding mouse for PRECISELY 5 SECONDS on 2nd Green Publish Button...');
+        await page.waitForTimeout(5000);
 
-      if (confirmBtnEl) {
-        console.log('Hovering mouse over 2nd Green Publish Button...');
-        await confirmBtnEl.hover();
-        console.log('Waiting 1.5s for button to turn GREEN on mouse hover...');
-        await page.waitForTimeout(1500);
-
-        console.log('Executing Dual Click (Playwright Force Click + DOM Click)...');
-        await confirmBtnEl.click({ force: true });
-        await confirmBtnEl.evaluate(b => b.click());
+        console.log('5 seconds hold complete! Clicking 2nd GREEN Publish Button now!');
+        await page.mouse.click(confirmBtnCoord.x, confirmBtnCoord.y);
       } else {
-        console.log('Executing Fallback Click for 2nd Publish Button...');
+        console.log('Fallback click for 2nd publish button...');
         await page.evaluate(() => {
           const layer = document.querySelector('[class*="publish_layer"]') || document.body;
           const btns = Array.from(layer.querySelectorAll('button, a'));
