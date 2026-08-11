@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Dim Removal & Verified Popup Uploader for ID: ' + naverId);
+  console.log('Starting Text-First & Bulk Image Upload Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -151,62 +151,63 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       await page.waitForTimeout(800);
     } catch (e) {}
 
-    // 4. 본문 텍스트 타자 및 위치별 이미지 직접 첨부 (OS 파일 탐색기 창 유발 차단)
-    console.log('Processing ' + parsedBlocks.length + ' body blocks...');
-
-    for (let index = 0; index < parsedBlocks.length; index++) {
-      const block = parsedBlocks[index];
-
-      if (block.type === 'text') {
-        console.log('Typing text block ' + (index + 1) + '...');
-        const textLines = block.content.split('\n');
-        for (const line of textLines) {
-          if (line.trim().length > 0) {
-            await page.keyboard.type(line.trim(), { delay: 30 });
-            await page.keyboard.press('Enter');
-            await page.waitForTimeout(200);
-          } else {
-            await page.keyboard.press('Enter');
-          }
-        }
-      } else if (block.type === 'image') {
-        const imagePath = path.join(imagesDir, block.filename);
-        console.log('Inserting Verified Image directly via File Input for: ' + block.filename);
-
-        if (fs.existsSync(imagePath)) {
-          let fileInput = await frame.$('input[type="file"]');
-          if (!fileInput) {
-            fileInput = await page.$('input[type="file"]');
-          }
-
-          if (fileInput) {
-            await fileInput.setInputFiles(imagePath);
-            await frame.evaluate(() => {
-              const input = document.querySelector('input[type="file"]');
-              if (input) {
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-              }
-            });
-            console.log('Attached image cleanly for: ' + block.filename);
-            await page.waitForTimeout(3000);
-            await page.keyboard.press('Enter');
-          }
+    // 4. 본문 텍스트 전체 선작성 -> 맨 마지막 이미지 5종 일괄 첨부 -> 파일 탐색 창 닫기
+    console.log('Writing ALL body text content first as requested by user...');
+    const allTextBlocks = parsedBlocks.filter(b => b.type === 'text');
+    for (let index = 0; index < allTextBlocks.length; index++) {
+      const block = allTextBlocks[index];
+      console.log('Typing text block ' + (index + 1) + '/' + allTextBlocks.length + '...');
+      const textLines = block.content.split('\n');
+      for (const line of textLines) {
+        if (line.trim().length > 0) {
+          await page.keyboard.type(line.trim(), { delay: 30 });
+          await page.keyboard.press('Enter');
+          await page.waitForTimeout(150);
+        } else {
+          await page.keyboard.press('Enter');
         }
       }
     }
 
-    console.log('All text blocks and images inserted successfully!');
-    await page.waitForTimeout(3000);
+    console.log('All text content written successfully! Now attaching ALL 5 images at the end...');
+    await page.waitForTimeout(2000);
+
+    const allImageBlocks = parsedBlocks.filter(b => b.type === 'image');
+    for (let index = 0; index < allImageBlocks.length; index++) {
+      const block = allImageBlocks[index];
+      const imagePath = path.join(imagesDir, block.filename);
+      console.log('Attaching image (' + (index + 1) + '/' + allImageBlocks.length + '): ' + block.filename);
+
+      if (fs.existsSync(imagePath)) {
+        let fileInput = await frame.$('input[type="file"]');
+        if (!fileInput) {
+          fileInput = await page.$('input[type="file"]');
+        }
+
+        if (fileInput) {
+          await fileInput.setInputFiles(imagePath);
+          await frame.evaluate(() => {
+            const input = document.querySelector('input[type="file"]');
+            if (input) {
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          });
+          console.log('Attached image successfully: ' + block.filename);
+          await page.waitForTimeout(3000);
+          await page.keyboard.press('Enter');
+        }
+      }
+    }
+
+    console.log('All 5 images attached! Closing any open file dialogs and popups cleanly...');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(1500);
 
     // 5. 발행 직전 방해 요소 클리어 ➔ 1차 우측 팝업 노출 ➔ 2차 발행 마우스 호버 오버 ➔ 1.5초 대기 ➔ 마우스 클릭
     if (uploadMode === 'publish') {
-      console.log('Clearing any remaining popups before clicking publish...');
-      await page.keyboard.press('Escape');
-      await page.keyboard.press('Escape');
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(1200);
-
       console.log('Verifying 1st Publish Layer Popup opening...');
       let popupOpened = false;
 
