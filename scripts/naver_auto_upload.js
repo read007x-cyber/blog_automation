@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Text-First & Bulk Image Upload Uploader for ID: ' + naverId);
+  console.log('Starting Toolbar Image & Dual Click Confirm Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -151,8 +151,8 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       await page.waitForTimeout(800);
     } catch (e) {}
 
-    // 4. 본문 텍스트 전체 선작성 -> 맨 마지막 이미지 5종 일괄 첨부 -> 파일 탐색 창 닫기
-    console.log('Writing ALL body text content first as requested by user...');
+    // 4. 본문 텍스트 전체 선작성
+    console.log('Writing ALL body text content first...');
     const allTextBlocks = parsedBlocks.filter(b => b.type === 'text');
     for (let index = 0; index < allTextBlocks.length; index++) {
       const block = allTextBlocks[index];
@@ -169,9 +169,10 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       }
     }
 
-    console.log('All text content written successfully! Now attaching ALL 5 images at the end...');
+    console.log('All text content written successfully! Now attaching ALL 5 images via toolbar photo button...');
     await page.waitForTimeout(2000);
 
+    // 5. 상단 툴바 사진 버튼 클릭 후 이미지 5종 첨부
     const allImageBlocks = parsedBlocks.filter(b => b.type === 'image');
     for (let index = 0; index < allImageBlocks.length; index++) {
       const block = allImageBlocks[index];
@@ -179,6 +180,18 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       console.log('Attaching image (' + (index + 1) + '/' + allImageBlocks.length + '): ' + block.filename);
 
       if (fs.existsSync(imagePath)) {
+        try {
+          await frame.evaluate(() => {
+            const btns = Array.from(document.querySelectorAll('button, a'));
+            const imgBtn = btns.find(b => {
+              const txt = b.innerText ? b.innerText.trim() : '';
+              return txt.includes('사진') || b.className.includes('image');
+            });
+            if (imgBtn) imgBtn.click();
+          });
+          await page.waitForTimeout(1200);
+        } catch (e) {}
+
         let fileInput = await frame.$('input[type="file"]');
         if (!fileInput) {
           fileInput = await page.$('input[type="file"]');
@@ -193,20 +206,17 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
               input.dispatchEvent(new Event('input', { bubbles: true }));
             }
           });
-          console.log('Attached image successfully: ' + block.filename);
-          await page.waitForTimeout(3000);
+          console.log('Attached image successfully via Toolbar Photo Button: ' + block.filename);
+          await page.waitForTimeout(4000);
           await page.keyboard.press('Enter');
         }
       }
     }
 
-    console.log('All 5 images attached! Closing any open file dialogs and popups cleanly...');
-    await page.keyboard.press('Escape');
-    await page.keyboard.press('Escape');
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(1500);
+    console.log('All 5 images attached! Closing file chooser popups cleanly...');
+    await page.waitForTimeout(2000);
 
-    // 5. 발행 직전 방해 요소 클리어 ➔ 1차 우측 팝업 노출 ➔ 2차 발행 마우스 호버 오버 ➔ 1.5초 대기 ➔ 마우스 클릭
+    // 6. 1차 발행 버튼 클릭 ➔ 우측 레이어 팝업 노출 ➔ 2차 초록색 발행 버튼 마우스 호버 & 클릭 전송
     if (uploadMode === 'publish') {
       console.log('Verifying 1st Publish Layer Popup opening...');
       let popupOpened = false;
@@ -243,40 +253,39 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
         await page.waitForTimeout(3000);
       }
 
-      await page.keyboard.press('Escape');
-      await page.waitForTimeout(800);
+      console.log('Layer Popup is OPEN! Targeting 2nd Layer Popup Green Confirm Button...');
+      await page.waitForTimeout(1000);
 
-      console.log('Calculating absolute coordinates for 2nd Layer Popup Confirm Button on clean screen...');
-      const confirmBtnCoord = await page.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll('button, a'));
-        const target = btns.find(b => {
+      const confirmBtnHandle = await page.evaluateHandle(() => {
+        const layer = document.querySelector('[class*="publish_layer"]') || document.querySelector('[class*="layer_publish"]') || document.body;
+        const btns = Array.from(layer.querySelectorAll('button, a'));
+        return btns.find(b => {
           const txt = b.innerText ? b.innerText.trim() : '';
           const isPub = txt === '발행' || txt.includes('발행');
           const isNotTop = !b.className.includes('toolbar') && !b.className.includes('se-publish-btn');
           const isVis = b.offsetWidth > 0 && b.offsetHeight > 0;
           return isPub && isNotTop && isVis;
         });
-        if (target) {
-          const rect = target.getBoundingClientRect();
-          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-        }
-        return null;
       });
 
-      if (confirmBtnCoord) {
-        console.log('Moving mouse OVER to 2nd Publish Button at:', confirmBtnCoord);
-        await page.mouse.move(confirmBtnCoord.x, confirmBtnCoord.y, { steps: 12 });
-        
+      const confirmBtnEl = confirmBtnHandle.asElement();
+
+      if (confirmBtnEl) {
+        console.log('Hovering mouse over 2nd Green Publish Button...');
+        await confirmBtnEl.hover();
         console.log('Waiting 1.5s for button to turn GREEN on mouse hover...');
         await page.waitForTimeout(1500);
 
-        console.log('Clicking 2nd GREEN Publish Button!');
-        await page.mouse.click(confirmBtnCoord.x, confirmBtnCoord.y);
+        console.log('Executing Dual Click (Playwright Force Click + DOM Click)...');
+        await confirmBtnEl.click({ force: true });
+        await confirmBtnEl.evaluate(b => b.click());
       } else {
-        console.log('Fallback click for 2nd publish button...');
+        console.log('Executing Fallback Click for 2nd Publish Button...');
         await page.evaluate(() => {
-          const confirm = document.querySelector('.confirm_btn, .btn_confirm, button[class*="confirm_btn"]');
-          if (confirm) confirm.click();
+          const layer = document.querySelector('[class*="publish_layer"]') || document.body;
+          const btns = Array.from(layer.querySelectorAll('button, a'));
+          const target = btns.find(b => b.innerText && b.innerText.trim() === '발행');
+          if (target) target.click();
         });
       }
 
