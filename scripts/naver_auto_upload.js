@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting 3-Stage MouseEvent Dispatch Uploader for ID: ' + naverId);
+  console.log('Starting Precision Fallback Hover & Click Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -192,50 +192,81 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     console.log('All text blocks and images inserted successfully!');
     await page.waitForTimeout(3000);
 
-    // 5. 3단계 마우스 디스패치 이벤트 적용 (mousedown -> mouseup -> click)
+    // 5. 1차 발행 클릭 ➔ 4초 대기 ➔ 2차 발행 버튼 마우스 호버(Hover) 오버 ➔ 1.5초 초록색 변경 대기 ➔ 마우스 클릭
     if (uploadMode === 'publish') {
-      console.log('Dispatching 3-stage MouseEvents for 1st Top Toolbar Publish Button...');
+      console.log('Clicking 1st publish button with multiple fallbacks...');
+      let popupOpened = false;
 
-      await page.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll('button, a'));
-        const pubBtn = btns.find(b => b.innerText && b.innerText.trim() === '발행' && b.offsetWidth > 0);
-        if (pubBtn) {
-          pubBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-          pubBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-          pubBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      try {
+        const pBtn = await frame.$('button[class*="publish_btn"], button.publish_btn, .btn_publish');
+        if (pBtn) {
+          await pBtn.click();
+          popupOpened = true;
         }
-      });
+      } catch (e) {}
 
-      console.log('Dispatched 1st Publish Button MouseEvents! Waiting 4s for Layer Popup...');
+      if (!popupOpened) {
+        try {
+          const pBtnOnPage = await page.$('button[class*="publish_btn"], button.publish_btn, .btn_publish');
+          if (pBtnOnPage) {
+            await pBtnOnPage.click();
+            popupOpened = true;
+          }
+        } catch (e) {}
+      }
+
+      if (!popupOpened) {
+        await frame.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll('button'));
+          const pub = btns.find(b => b.innerText && b.innerText.trim() === '발행');
+          if (pub) pub.click();
+        });
+      }
+
+      console.log('Waiting 4s for 2nd Layer Popup rendering...');
       await page.waitForTimeout(4000);
 
       await page.keyboard.press('Escape');
       await page.waitForTimeout(800);
 
-      console.log('Dispatching 3-stage MouseEvents for 2nd Layer Popup Confirm Button...');
-      await page.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll('button, a'));
-        const confirmBtn = btns.find(b => {
-          const txt = b.innerText ? b.innerText.trim() : '';
-          const isPublishText = txt === '발행';
-          const isNotTopToolbar = !b.className.includes('toolbar');
-          const isVisible = b.offsetWidth > 0 && b.offsetHeight > 0;
-          return isPublishText && isNotTopToolbar && isVisible;
-        });
+      console.log('Targeting 2nd Layer Popup Publish Button for Hover & Click...');
 
-        if (confirmBtn) {
-          confirmBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-          confirmBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-          confirmBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-        } else {
-          const altConfirm = document.querySelector('.confirm_btn, .btn_confirm, button[class*="confirm_btn"]');
-          if (altConfirm) altConfirm.click();
+      let targetBox = null;
+      const confirmBtn = await page.$('.confirm_btn, .btn_confirm, button[class*="confirm_btn"], button[class*="publish_btn"]');
+      if (confirmBtn && await confirmBtn.isVisible()) {
+        targetBox = await confirmBtn.boundingBox();
+      }
+
+      if (!targetBox) {
+        const confirmOnFrame = await frame.$('.confirm_btn, .btn_confirm, button[class*="confirm_btn"], button[class*="publish_btn"]');
+        if (confirmOnFrame && await confirmOnFrame.isVisible()) {
+          targetBox = await confirmOnFrame.boundingBox();
         }
-      });
+      }
+
+      if (targetBox) {
+        const centerX = targetBox.x + targetBox.width / 2;
+        const centerY = targetBox.y + targetBox.height / 2;
+        
+        console.log('Moving mouse OVER to 2nd Publish Button at:', { centerX, centerY });
+        await page.mouse.move(centerX, centerY, { steps: 12 });
+        
+        console.log('Waiting 1.5s for button to turn GREEN on mouse hover...');
+        await page.waitForTimeout(1500);
+
+        console.log('Clicking 2nd GREEN Publish Button!');
+        await page.mouse.click(centerX, centerY);
+      } else {
+        console.log('Fallback JS click for 2nd publish button...');
+        await page.evaluate(() => {
+          const confirm = document.querySelector('.confirm_btn, .btn_confirm, button[class*="confirm_btn"]');
+          if (confirm) confirm.click();
+        });
+      }
 
       await page.keyboard.press('Enter');
 
-      console.log('Publish submit triggered! Keeping browser window PERMANENTLY OPEN on screen...');
+      console.log('Publish submit completed! Waiting 6s for post registration...');
       await page.waitForTimeout(6000);
 
       const screenshotPath = path.join(targetTopicDir, 'naver_upload_result.png');
