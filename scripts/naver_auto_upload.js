@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Physical Mouse Click & Permanent Open Browser Uploader for ID: ' + naverId);
+  console.log('Starting 3-Stage MouseEvent Dispatch Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -192,66 +192,52 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     console.log('All text blocks and images inserted successfully!');
     await page.waitForTimeout(3000);
 
-    // 5. 물리 마우스 좌표 클릭 및 브라우저 창 영구 대기
+    // 5. 3단계 마우스 디스패치 이벤트 적용 (mousedown -> mouseup -> click)
     if (uploadMode === 'publish') {
-      console.log('Publish Mode Active: Clicking 1st Main Publish Button...');
-      
-      let clicked1st = false;
-      const firstPubOnPage = await page.$('button[class*="publish"], .btn_publish');
-      if (firstPubOnPage && await firstPubOnPage.isVisible()) {
-        const box = await firstPubOnPage.boundingBox();
-        if (box) {
-          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-          clicked1st = true;
-        }
-      }
-      if (!clicked1st) {
-        const firstPubOnFrame = await frame.$('button[class*="publish"], .btn_publish');
-        if (firstPubOnFrame) await firstPubOnFrame.click();
-      }
+      console.log('Dispatching 3-stage MouseEvents for 1st Top Toolbar Publish Button...');
 
-      console.log('Clicked 1st Publish Button. Waiting 4s for Layer Popup...');
+      await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('button, a'));
+        const pubBtn = btns.find(b => b.innerText && b.innerText.trim() === '발행' && b.offsetWidth > 0);
+        if (pubBtn) {
+          pubBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+          pubBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+          pubBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        }
+      });
+
+      console.log('Dispatched 1st Publish Button MouseEvents! Waiting 4s for Layer Popup...');
       await page.waitForTimeout(4000);
 
       await page.keyboard.press('Escape');
       await page.waitForTimeout(800);
 
-      console.log('Targeting physical mouse click on 2nd publish button in Layer Popup...');
-      
-      let clicked2nd = false;
-      const confirmOnPage = await page.$('.confirm_btn, .btn_confirm, button[class*="confirm_btn"], button[class*="publish_btn"]');
-      if (confirmOnPage && await confirmOnPage.isVisible()) {
-        const box = await confirmOnPage.boundingBox();
-        if (box) {
-          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-          console.log('Physically clicked (x, y) on 2nd publish button on main page DOM!');
-          clicked2nd = true;
-        }
-      }
-
-      if (!clicked2nd) {
-        const confirmOnFrame = await frame.$('.confirm_btn, .btn_confirm, button[class*="confirm_btn"], button[class*="publish_btn"]');
-        if (confirmOnFrame && await confirmOnFrame.isVisible()) {
-          const box = await confirmOnFrame.boundingBox();
-          if (box) {
-            await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-            console.log('Physically clicked (x, y) on 2nd publish button on mainFrame DOM!');
-            clicked2nd = true;
-          }
-        }
-      }
-
-      if (!clicked2nd) {
-        await page.evaluate(() => {
-          const btns = Array.from(document.querySelectorAll('button, a'));
-          const pub = btns.find(b => b.innerText && b.innerText.trim() === '발행' && !b.className.includes('toolbar') && b.offsetWidth > 0);
-          if (pub) pub.click();
+      console.log('Dispatching 3-stage MouseEvents for 2nd Layer Popup Confirm Button...');
+      await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('button, a'));
+        const confirmBtn = btns.find(b => {
+          const txt = b.innerText ? b.innerText.trim() : '';
+          const isPublishText = txt === '발행';
+          const isNotTopToolbar = !b.className.includes('toolbar');
+          const isVisible = b.offsetWidth > 0 && b.offsetHeight > 0;
+          return isPublishText && isNotTopToolbar && isVisible;
         });
-      }
+
+        if (confirmBtn) {
+          confirmBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+          confirmBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+          confirmBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        } else {
+          const altConfirm = document.querySelector('.confirm_btn, .btn_confirm, button[class*="confirm_btn"]');
+          if (altConfirm) altConfirm.click();
+        }
+      });
 
       await page.keyboard.press('Enter');
 
       console.log('Publish submit triggered! Keeping browser window PERMANENTLY OPEN on screen...');
+      await page.waitForTimeout(6000);
+
       const screenshotPath = path.join(targetTopicDir, 'naver_upload_result.png');
       await page.screenshot({ path: screenshotPath, fullPage: true });
       console.log('Saved result screenshot to: ' + screenshotPath);
