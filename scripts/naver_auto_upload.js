@@ -62,7 +62,7 @@ function parseBodyBlocks(content) {
 const parsedBlocks = parseBodyBlocks(bodyRawContent);
 
 (async () => {
-  console.log('Starting Blur Focus & 3-Way Publish Solution Uploader for ID: ' + naverId);
+  console.log('Starting Canonical 5-Step Frame Locator Publish Uploader for ID: ' + naverId);
   const userDataDir = path.join(__dirname, '..', 'scratch', 'naver_user_data');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -221,54 +221,49 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
     await page.keyboard.press('Escape');
     await page.waitForTimeout(2000);
 
-    // 5. 에디터 외부 포커스 완전 이탈 (Blur Focus) ➔ 1차 발행 팝업 노출 ➔ 2차 초록색 발행 버튼 5초 체류 ➔ 3중 클릭
+    // 5. 사용자가 제시한 정석 5단계 프레임 로케이터 발행 파이프라인
     if (uploadMode === 'publish') {
-      console.log('Executing Solution 1: Blur Focus by clicking outside editor header...');
-      try {
-        await page.click('body', { position: { x: 10, y: 10 } });
-        await page.waitForTimeout(800);
-      } catch (e) {}
-
-      console.log('Verifying 1st Publish Layer Popup opening...');
+      console.log('Step 1 & 2: Targeting 1st Publish Button inside frame and page...');
       let popupOpened = false;
 
       for (let attempt = 0; attempt < 3; attempt++) {
-        await page.evaluate(() => {
-          const btn = document.querySelector('.btn_publish') || 
-                      document.querySelector('.se-publish-btn') || 
-                      document.querySelector('button[class*="publish"]') || 
-                      Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.trim() === '발행');
-          if (btn) btn.click();
-        });
+        try {
+          const firstPubBtn = frame.locator("button:has-text('발행'), .btn_publish, .se-publish-btn").first();
+          if (await firstPubBtn.isVisible()) {
+            await firstPubBtn.click();
+          } else {
+            await page.evaluate(() => {
+              const btn = document.querySelector('.btn_publish') || document.querySelector('.se-publish-btn') || Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.trim() === '발행');
+              if (btn) btn.click();
+            });
+          }
+        } catch (e) {}
 
         await page.waitForTimeout(2500);
 
+        // Step 3: 발행 설정 레이어 팝업(.se-popup-publish, .se-publish-layer) 노출 확인
         const isLayerVisible = await page.evaluate(() => {
-          const layer = document.querySelector('[class*="publish_layer"]') || document.querySelector('[class*="layer_publish"]');
+          const layer = document.querySelector('.se-popup-publish, .se-publish-layer, [class*="publish_layer"]');
           return layer && layer.offsetWidth > 0 && layer.offsetHeight > 0;
         });
 
-        if (isLayerVisible) {
-          console.log('Layer Popup successfully OPENED on attempt ' + (attempt + 1));
+        const isFrameLayerVisible = await frame.evaluate(() => {
+          const layer = document.querySelector('.se-popup-publish, .se-publish-layer, [class*="publish_layer"]');
+          return layer && layer.offsetWidth > 0 && layer.offsetHeight > 0;
+        });
+
+        if (isLayerVisible || isFrameLayerVisible) {
+          console.log('Step 3 Success: Publish Popup Layer is VISIBLE on attempt ' + (attempt + 1));
           popupOpened = true;
           break;
         }
       }
 
-      if (!popupOpened) {
-        console.log('Fallback: clicking publish button inside frame...');
-        await frame.evaluate(() => {
-          const btn = document.querySelector('.btn_publish, button[class*="publish"]');
-          if (btn) btn.click();
-        });
-        await page.waitForTimeout(3000);
-      }
-
-      console.log('Layer Popup is OPEN! Moving mouse OVER to 2nd Green Publish Button...');
-      await page.waitForTimeout(1500);
+      console.log('Step 4: Locating final 2nd publish button inside publish popup layer...');
+      await page.waitForTimeout(1000);
 
       const confirmBtnCoord = await page.evaluate(() => {
-        const layer = document.querySelector('[class*="publish_layer"]') || document.querySelector('[class*="layer_publish"]') || document.body;
+        const layer = document.querySelector('.se-popup-publish, .se-publish-layer, [class*="publish_layer"]') || document.body;
         const btns = Array.from(layer.querySelectorAll('button, a'));
         const target = btns.find(b => {
           const txt = b.innerText ? b.innerText.trim() : '';
@@ -285,44 +280,47 @@ const parsedBlocks = parseBodyBlocks(bodyRawContent);
       });
 
       if (confirmBtnCoord) {
-        console.log('Moving mouse cursor OVER to 2nd Publish Button at:', confirmBtnCoord);
+        console.log('Moving mouse OVER to 2nd Green Publish Button at:', confirmBtnCoord);
         await page.mouse.move(confirmBtnCoord.x, confirmBtnCoord.y, { steps: 20 });
-        
+
         console.log('Button hovered! Waiting and holding mouse for EXACTLY 5 SECONDS while button is GREEN...');
         await page.waitForTimeout(5000);
 
-        console.log('5 SECONDS HOLD COMPLETE! Executing 3-Way Triple Click (Mouse Down/Up + Playwright Click + DOM Dispatch)...');
+        console.log('5 SECONDS HOLD COMPLETE! Executing final_publish_btn.click(force=True) and mouse click...');
         await page.mouse.down();
         await page.waitForTimeout(150);
         await page.mouse.up();
         await page.mouse.click(confirmBtnCoord.x, confirmBtnCoord.y);
 
-        await page.evaluate((coord) => {
-          const layer = document.querySelector('[class*="publish_layer"]') || document.querySelector('[class*="layer_publish"]') || document.body;
-          const btns = Array.from(layer.querySelectorAll('button, a'));
-          const target = btns.find(b => {
-            const txt = b.innerText ? b.innerText.trim() : '';
-            return (txt === '발행' || txt.includes('발행')) && !b.className.includes('se-publish-btn');
-          });
-          if (target) {
-            target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-            target.click();
+        try {
+          const popup = frame.locator('.se-popup-publish, .se-publish-layer').first();
+          const finalBtn = popup.locator("button:has-text('발행')").first();
+          if (await finalBtn.isVisible()) {
+            await finalBtn.click({ force: true });
           }
-        }, confirmBtnCoord);
+        } catch (e) {}
+
       } else {
-        console.log('Fallback click for 2nd publish button...');
-        await page.evaluate(() => {
-          const layer = document.querySelector('[class*="publish_layer"]') || document.body;
-          const btns = Array.from(layer.querySelectorAll('button, a'));
-          const target = btns.find(b => b.innerText && b.innerText.trim() === '발행');
-          if (target) target.click();
-        });
+        console.log('Fallback click for 2nd publish button inside frame and page...');
+        try {
+          const popup = frame.locator('.se-popup-publish, .se-publish-layer').first();
+          const finalBtn = popup.locator("button:has-text('발행')").first();
+          await finalBtn.click({ force: true });
+        } catch (e) {}
       }
 
       await page.keyboard.press('Enter');
 
-      console.log('Publish submit triggered! Waiting 12s for server post completion...');
-      await page.waitForTimeout(12000);
+      // Step 5: 발행 후 완료 페이지 URL(**/List.naver** 또는 **/PostView.naver**) 대기
+      console.log('Step 5: Waiting for URL completion transition to List.naver or PostView.naver...');
+      try {
+        await page.waitForURL(url => url.href.includes('List.naver') || url.href.includes('PostView.naver') || url.href.includes('blog.naver.com'), { timeout: 10000 });
+        console.log('Successfully navigated to post completion URL!');
+      } catch (e) {
+        console.log('URL wait note:', e.message);
+      }
+
+      await page.waitForTimeout(6000);
 
       console.log('Navigating directly to user Blog PostList page to verify publication: https://blog.naver.com/PostList.naver?blogId=' + naverId);
       await page.goto('https://blog.naver.com/PostList.naver?blogId=' + naverId);
